@@ -7,6 +7,8 @@ import 'models.dart';
 class NativeBridge {
   static const _channel = MethodChannel('tomato_clock/native');
 
+  bool get supportsFloatingWindow => Platform.isAndroid;
+
   Future<String> appDataDirectory() async {
     if (Platform.isAndroid) {
       final path = await _channel.invokeMethod<String>('appDataDirectory');
@@ -35,14 +37,20 @@ class NativeBridge {
     if (!Platform.isAndroid) {
       return;
     }
-    await _channel.invokeMethod<Object?>('startOverlay', _overlayArgs(snapshot));
+    await _channel.invokeMethod<Object?>(
+      'startOverlay',
+      _overlayArgs(snapshot),
+    );
   }
 
   Future<void> updateOverlay(TimerSnapshot snapshot) async {
     if (!Platform.isAndroid) {
       return;
     }
-    await _channel.invokeMethod<Object?>('updateOverlay', _overlayArgs(snapshot));
+    await _channel.invokeMethod<Object?>(
+      'updateOverlay',
+      _overlayArgs(snapshot),
+    );
   }
 
   Future<void> stopOverlay() async {
@@ -65,7 +73,8 @@ class NativeBridge {
   }
 
   String _fallbackDataDirectory() {
-    final home = Platform.environment['HOME'] ??
+    final home =
+        Platform.environment['HOME'] ??
         Platform.environment['USERPROFILE'] ??
         Directory.current.path;
     return '$home/.tomato_clock';

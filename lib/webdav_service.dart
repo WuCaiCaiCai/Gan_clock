@@ -121,10 +121,7 @@ class WebDavService {
     for (var index = 1; index < remoteSegments.length; index++) {
       collections.add(
         base.replace(
-          pathSegments: [
-            ...baseSegments,
-            ...remoteSegments.take(index),
-          ],
+          pathSegments: [...baseSegments, ...remoteSegments.take(index)],
         ),
       );
     }
@@ -142,7 +139,9 @@ class WebDavService {
   }
 
   List<String> _remoteSegments(String remotePath) {
-    final cleaned = remotePath.trim().isEmpty ? 'tomato_clock/backup.json' : remotePath;
+    final cleaned = remotePath.trim().isEmpty
+        ? 'tomato_clock/backup.json'
+        : remotePath;
     return cleaned.split('/').where((item) => item.trim().isNotEmpty).toList();
   }
 
@@ -150,7 +149,9 @@ class WebDavService {
     if (settings.username.isEmpty && settings.password.isEmpty) {
       return null;
     }
-    final token = base64Encode(utf8.encode('${settings.username}:${settings.password}'));
+    final token = base64Encode(
+      utf8.encode('${settings.username}:${settings.password}'),
+    );
     return 'Basic $token';
   }
 

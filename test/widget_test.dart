@@ -1,30 +1,38 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-
+import 'package:tomato_clock/app_controller.dart';
 import 'package:tomato_clock/main.dart';
+import 'package:tomato_clock/models.dart';
+import 'package:tomato_clock/storage.dart';
+
+class MemoryStore implements TomatoStore {
+  MemoryStore(this.data);
+
+  TomatoData data;
+
+  @override
+  Future<TomatoData> load() async => data;
+
+  @override
+  Future<void> save(TomatoData data) async {
+    this.data = data;
+  }
+}
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  testWidgets('shows tomato timer controls', (WidgetTester tester) async {
+    final controller = AppController(
+      storage: MemoryStore(TomatoData.initial()),
+    );
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
-
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
+    await tester.pumpWidget(TomatoApp(controller: controller));
     await tester.pump();
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    expect(find.text('TomatoClock'), findsOneWidget);
+    expect(find.text('25:00'), findsOneWidget);
+    expect(find.text('开始'), findsOneWidget);
+    expect(find.byIcon(Icons.play_arrow), findsOneWidget);
+
+    controller.dispose();
   });
 }

@@ -4,12 +4,19 @@ import 'dart:io';
 import 'models.dart';
 import 'native_bridge.dart';
 
-class AppStorage {
+abstract class TomatoStore {
+  Future<TomatoData> load();
+
+  Future<void> save(TomatoData data);
+}
+
+class AppStorage implements TomatoStore {
   AppStorage(this._bridge);
 
   final NativeBridge _bridge;
   File? _dataFile;
 
+  @override
   Future<TomatoData> load() async {
     final file = await _file();
     if (!await file.exists()) {
@@ -24,6 +31,7 @@ class AppStorage {
     }
   }
 
+  @override
   Future<void> save(TomatoData data) async {
     final file = await _file();
     await file.parent.create(recursive: true);
@@ -42,7 +50,9 @@ class AppStorage {
     }
     final directory = Directory(await _bridge.appDataDirectory());
     await directory.create(recursive: true);
-    final file = File('${directory.path}${Platform.pathSeparator}tomato_data.json');
+    final file = File(
+      '${directory.path}${Platform.pathSeparator}tomato_data.json',
+    );
     _dataFile = file;
     return file;
   }

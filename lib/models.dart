@@ -234,7 +234,8 @@ class TimerSnapshot {
   final DateTime? endsAt;
   final DateTime? pausedAt;
 
-  bool get isActive => phase == TimerPhase.running || phase == TimerPhase.paused;
+  bool get isActive =>
+      phase == TimerPhase.running || phase == TimerPhase.paused;
 
   TimerSnapshot copyWith({
     TimerMode? mode,
@@ -295,7 +296,12 @@ class TimerSnapshot {
       mode: mode,
       phase: timerPhaseFromJson(value['phase']),
       totalSeconds: total,
-      remainingSeconds: _boundedInt(value['remainingSeconds'], 0, 24 * 3600, total),
+      remainingSeconds: _boundedInt(
+        value['remainingSeconds'],
+        0,
+        24 * 3600,
+        total,
+      ),
       startedAt: _dateTimeOrNull(value['startedAt']),
       endsAt: _dateTimeOrNull(value['endsAt']),
       pausedAt: _dateTimeOrNull(value['pausedAt']),
@@ -362,11 +368,13 @@ class TomatoData {
     final mergedSessions = byId.values.toList()
       ..sort((a, b) => b.endedAt.compareTo(a.endedAt));
     final remoteIsNewer = remote.updatedAt.isAfter(updatedAt);
-    final useRemoteTimer = remote.timer.isActive && !timer.isActive ||
+    final useRemoteTimer =
+        remote.timer.isActive && !timer.isActive ||
         (remote.timer.isActive == timer.isActive && remoteIsNewer);
     final mergedTimer = useRemoteTimer ? remote.timer : timer;
-    final mergedCycleCount =
-        useRemoteTimer ? remote.focusCycleCount : focusCycleCount;
+    final mergedCycleCount = useRemoteTimer
+        ? remote.focusCycleCount
+        : focusCycleCount;
     final newestSettings = remoteIsNewer ? remote.settings : settings;
     return copyWith(
       settings: newestSettings,
