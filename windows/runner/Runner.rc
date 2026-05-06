@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "com.wucai.tomato_clock" "\0"
-            VALUE "FileDescription", "tomato_clock" "\0"
+            VALUE "FileDescription", "苷" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "tomato_clock" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 com.wucai.tomato_clock. All rights reserved." "\0"
             VALUE "OriginalFilename", "tomato_clock.exe" "\0"
-            VALUE "ProductName", "tomato_clock" "\0"
+            VALUE "ProductName", "苷" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

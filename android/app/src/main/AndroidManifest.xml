@@ -2,7 +2,7 @@
     <uses-permission android:name="android.permission.INTERNET" />
 
     <application
-        android:label="番茄钟"
+        android:label="苷"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

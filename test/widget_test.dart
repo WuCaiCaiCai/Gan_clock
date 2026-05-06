@@ -55,6 +55,7 @@ void main() {
     await tester.pumpWidget(TomatoApp(controller: controller));
     await tester.pump();
 
+    expect(tester.widget<MaterialApp>(find.byType(MaterialApp)).title, '苷');
     expect(find.text('番茄钟'), findsWidgets);
     expect(find.text('25:00'), findsOneWidget);
     expect(find.text('开始'), findsOneWidget);
@@ -123,6 +124,69 @@ void main() {
 
     controller.dispose();
   });
+
+  testWidgets(
+    'number stepper accepts integer input and keeps configured step',
+    (WidgetTester tester) async {
+      var minutes = 25;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StatefulBuilder(
+              builder: (context, setState) {
+                return NumberStepper(
+                  icon: Icons.timer_outlined,
+                  label: '专注时长',
+                  value: minutes,
+                  min: 1,
+                  max: 240,
+                  step: 5,
+                  suffix: '分钟',
+                  onChanged: (value) => setState(() => minutes = value),
+                );
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      await tester.tap(find.byIcon(Icons.add_circle_outline));
+      await tester.pump();
+      expect(minutes, 30);
+
+      await tester.enterText(find.byType(TextField), '37');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pump();
+      expect(minutes, 37);
+
+      var rounds = 4;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StatefulBuilder(
+              builder: (context, setState) {
+                return NumberStepper(
+                  icon: Icons.repeat,
+                  label: '长休间隔',
+                  value: rounds,
+                  min: 1,
+                  max: 12,
+                  suffix: '轮',
+                  onChanged: (value) => setState(() => rounds = value),
+                );
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      await tester.tap(find.byIcon(Icons.add_circle_outline));
+      await tester.pump();
+      expect(rounds, 5);
+    },
+  );
 
   testWidgets('hides chrome after timer page sits idle', (
     WidgetTester tester,

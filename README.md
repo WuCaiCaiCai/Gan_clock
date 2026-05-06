@@ -1,4 +1,4 @@
-# TomatoClock
+# 苷
 
 一个偏安静、偏手机使用场景的番茄钟。主流程用 Flutter 和 Dart 编写，提供阶段色计时圆环、沉浸式专注界面、统计热力图、WebDAV 备份和 Android 画中画。
 

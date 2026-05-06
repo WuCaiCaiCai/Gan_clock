@@ -59,7 +59,7 @@ class _TomatoAppState extends State<TomatoApp> {
         return AppScope(
           controller: _controller,
           child: MaterialApp(
-            title: 'TomatoClock',
+            title: '苷',
             debugShowCheckedModeBanner: false,
             theme: _buildAppTheme(Brightness.light),
             darkTheme: _buildAppTheme(Brightness.dark),
@@ -1134,6 +1134,7 @@ class _BackupPage extends StatelessWidget {
                       value: settings.backupAutoSyncIntervalMinutes,
                       min: 5,
                       max: 1440,
+                      step: 5,
                       suffix: '分钟',
                       onChanged: (value) {
                         controller.updateSettings(
@@ -1961,6 +1962,7 @@ class _TimerSettingsSheet extends StatelessWidget {
             value: settings.focusMinutes,
             min: 1,
             max: 240,
+            step: 5,
             suffix: '分钟',
             onChanged: (value) {
               controller.updateSettings(settings.copyWith(focusMinutes: value));
@@ -1972,6 +1974,7 @@ class _TimerSettingsSheet extends StatelessWidget {
             value: settings.shortBreakMinutes,
             min: 1,
             max: 120,
+            step: 5,
             suffix: '分钟',
             onChanged: (value) {
               controller.updateSettings(
@@ -1985,6 +1988,7 @@ class _TimerSettingsSheet extends StatelessWidget {
             value: settings.longBreakMinutes,
             min: 1,
             max: 240,
+            step: 5,
             suffix: '分钟',
             onChanged: (value) {
               controller.updateSettings(
@@ -2242,7 +2246,7 @@ class _WebDavSettingsSheetState extends State<_WebDavSettingsSheet> {
   }
 }
 
-class NumberStepper extends StatelessWidget {
+class NumberStepper extends StatefulWidget {
   const NumberStepper({
     required this.icon,
     required this.label,
@@ -2251,6 +2255,7 @@ class NumberStepper extends StatelessWidget {
     required this.max,
     required this.suffix,
     required this.onChanged,
+    this.step = 1,
     super.key,
   });
 
@@ -2259,32 +2264,113 @@ class NumberStepper extends StatelessWidget {
   final int value;
   final int min;
   final int max;
+  final int step;
   final String suffix;
   final ValueChanged<int> onChanged;
 
   @override
+  State<NumberStepper> createState() => _NumberStepperState();
+}
+
+class _NumberStepperState extends State<NumberStepper> {
+  late final TextEditingController _controller;
+  late final FocusNode _focusNode;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.value.toString());
+    _focusNode = FocusNode()..addListener(_handleFocusChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant NumberStepper oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_focusNode.hasFocus && _controller.text != widget.value.toString()) {
+      _controller.text = widget.value.toString();
+    }
+  }
+
+  @override
+  void dispose() {
+    _focusNode
+      ..removeListener(_handleFocusChanged)
+      ..dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _handleFocusChanged() {
+    if (!_focusNode.hasFocus) {
+      _commitInput();
+    }
+  }
+
+  void _commitInput() {
+    final parsed = int.tryParse(_controller.text);
+    if (parsed == null) {
+      _controller.text = widget.value.toString();
+      return;
+    }
+    final next = parsed.clamp(widget.min, widget.max);
+    _controller.text = next.toString();
+    if (next != widget.value) {
+      widget.onChanged(next);
+    }
+  }
+
+  void _stepBy(int delta) {
+    final next = (widget.value + delta).clamp(widget.min, widget.max);
+    if (next != widget.value) {
+      widget.onChanged(next);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final canDecrease = widget.value - widget.step >= widget.min;
+    final canIncrease = widget.value + widget.step <= widget.max;
     return ListTile(
       contentPadding: EdgeInsets.zero,
-      leading: Icon(icon),
-      title: Text(label),
+      leading: Icon(widget.icon),
+      title: Text(widget.label),
       trailing: SizedBox(
-        width: 168,
+        width: 216,
         child: Row(
           mainAxisAlignment: MainAxisAlignment.end,
           children: [
             IconButton(
               tooltip: '减少',
-              onPressed: value > min ? () => onChanged(value - 1) : null,
+              onPressed: canDecrease ? () => _stepBy(-widget.step) : null,
               icon: const Icon(Icons.remove_circle_outline),
             ),
             SizedBox(
-              width: 58,
-              child: Text('$value $suffix', textAlign: TextAlign.center),
+              width: 70,
+              child: TextField(
+                controller: _controller,
+                focusNode: _focusNode,
+                textAlign: TextAlign.center,
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                decoration: const InputDecoration(
+                  isDense: true,
+                  contentPadding: EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 8,
+                  ),
+                  border: OutlineInputBorder(),
+                ),
+                onSubmitted: (_) => _commitInput(),
+              ),
+            ),
+            const SizedBox(width: 6),
+            SizedBox(
+              width: 34,
+              child: Text(widget.suffix, textAlign: TextAlign.start),
             ),
             IconButton(
               tooltip: '增加',
-              onPressed: value < max ? () => onChanged(value + 1) : null,
+              onPressed: canIncrease ? () => _stepBy(widget.step) : null,
               icon: const Icon(Icons.add_circle_outline),
             ),
           ],
