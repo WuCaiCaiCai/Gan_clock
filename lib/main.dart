@@ -96,6 +96,7 @@ class TomatoHomePage extends StatefulWidget {
 
 class _TomatoHomePageState extends State<TomatoHomePage> {
   AppController? _controller;
+  int _selectedIndex = 0;
 
   @override
   void didChangeDependencies() {
@@ -134,73 +135,210 @@ class _TomatoHomePageState extends State<TomatoHomePage> {
   Widget build(BuildContext context) {
     final controller = AppScope.watch(context);
     final data = controller.data;
-    final timer = data.timer;
-    final settings = data.settings;
-    final color = _modeColor(timer.mode);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('TomatoClock'),
-        actions: [
-          IconButton(
-            tooltip: '同步',
-            onPressed: settings.webDav.isConfigured && !controller.syncing
-                ? controller.syncNow
-                : null,
-            icon: controller.syncing
-                ? const SizedBox.square(
-                    dimension: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.sync),
-          ),
-          IconButton(
-            tooltip: '设置',
-            onPressed: () => _openSettings(context),
-            icon: const Icon(Icons.settings_outlined),
-          ),
-        ],
-      ),
+      appBar: AppBar(title: Text(_pageTitle(_selectedIndex))),
       body: SafeArea(
         child: controller.loading
             ? const Center(child: CircularProgressIndicator())
-            : Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 720),
-                  child: ListView(
-                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
-                    children: [
-                      _ModeSelector(
-                        selected: timer.mode,
-                        enabled: timer.phase != TimerPhase.running,
-                        onChanged: controller.selectMode,
-                      ),
-                      const SizedBox(height: 26),
-                      TimerProgressRing(snapshot: timer, color: color),
-                      const SizedBox(height: 24),
-                      _TimerActions(controller: controller, phase: timer.phase),
-                      const SizedBox(height: 28),
-                      _TodayStats(data: data),
-                      const SizedBox(height: 16),
-                      FocusHeatmap(focusSecondsByDay: data.focusSecondsByDay()),
-                      const SizedBox(height: 16),
-                      _RecentSessions(sessions: data.sessions.take(5).toList()),
-                    ],
+            : IndexedStack(
+                index: _selectedIndex,
+                children: [
+                  _TimerPage(controller: controller, data: data),
+                  _StatsPage(data: data),
+                  _SettingsPage(
+                    controller: controller,
+                    settings: data.settings,
                   ),
-                ),
+                ],
               ),
+      ),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _selectedIndex,
+        onDestinationSelected: (index) {
+          setState(() {
+            _selectedIndex = index;
+          });
+        },
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.timer_outlined),
+            selectedIcon: Icon(Icons.timer),
+            label: '番茄钟',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.bar_chart_outlined),
+            selectedIcon: Icon(Icons.bar_chart),
+            label: '统计',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.settings_outlined),
+            selectedIcon: Icon(Icons.settings),
+            label: '设置',
+          ),
+        ],
       ),
     );
   }
+}
 
-  void _openSettings(BuildContext context) {
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (_) => const SettingsSheet(),
+class _TimerPage extends StatelessWidget {
+  const _TimerPage({required this.controller, required this.data});
+
+  final AppController controller;
+  final TomatoData data;
+
+  @override
+  Widget build(BuildContext context) {
+    final timer = data.timer;
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 560),
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
+          children: [
+            _ModeSelector(
+              selected: timer.mode,
+              enabled: timer.phase != TimerPhase.running,
+              onChanged: controller.selectMode,
+            ),
+            const SizedBox(height: 34),
+            TimerProgressRing(snapshot: timer, color: _modeColor(timer.mode)),
+            const SizedBox(height: 28),
+            _TimerActions(controller: controller, phase: timer.phase),
+          ],
+        ),
+      ),
     );
   }
+}
+
+class _StatsPage extends StatelessWidget {
+  const _StatsPage({required this.data});
+
+  final TomatoData data;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 720),
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+          children: [
+            _TodayStats(data: data),
+            const SizedBox(height: 16),
+            FocusHeatmap(focusSecondsByDay: data.focusSecondsByDay()),
+            const SizedBox(height: 16),
+            _RecentSessions(sessions: data.sessions.take(8).toList()),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SettingsPage extends StatelessWidget {
+  const _SettingsPage({required this.controller, required this.settings});
+
+  final AppController controller;
+  final AppSettings settings;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 720),
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+          children: [
+            Card(
+              color: Colors.white,
+              child: Column(
+                children: [
+                  ListTile(
+                    leading: const Icon(Icons.tune),
+                    title: const Text('计时设置'),
+                    subtitle: Text(
+                      '专注 ${settings.focusMinutes} 分钟 · 短休 ${settings.shortBreakMinutes} 分钟 · 长休 ${settings.longBreakMinutes} 分钟',
+                    ),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => _openTimerSettings(context),
+                  ),
+                  const Divider(height: 1, indent: 56),
+                  ListTile(
+                    leading: const Icon(Icons.vibration),
+                    title: const Text('切换提醒'),
+                    subtitle: Text(
+                      '${settings.completionHapticsEnabled ? '震动开启' : '震动关闭'} · ${settings.completionSoundEnabled ? '音效开启' : '音效关闭'}',
+                    ),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => _openFeedbackSettings(context),
+                  ),
+                  const Divider(height: 1, indent: 56),
+                  ListTile(
+                    leading: const Icon(Icons.cloud_sync_outlined),
+                    title: const Text('WebDAV 同步'),
+                    subtitle: Text(
+                      settings.webDav.isConfigured ? '已配置远端备份' : '未配置',
+                    ),
+                    trailing: controller.syncing
+                        ? const SizedBox.square(
+                            dimension: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.chevron_right),
+                    onTap: controller.syncing
+                        ? null
+                        : () => _openWebDavSettings(context),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+String _pageTitle(int index) {
+  switch (index) {
+    case 0:
+      return '番茄钟';
+    case 1:
+      return '统计';
+    case 2:
+      return '设置';
+    default:
+      return 'TomatoClock';
+  }
+}
+
+void _openTimerSettings(BuildContext context) {
+  showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    isScrollControlled: true,
+    builder: (_) => const _TimerSettingsSheet(),
+  );
+}
+
+void _openFeedbackSettings(BuildContext context) {
+  showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    builder: (_) => const _FeedbackSettingsSheet(),
+  );
+}
+
+void _openWebDavSettings(BuildContext context) {
+  showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    isScrollControlled: true,
+    builder: (_) => const _WebDavSettingsSheet(),
+  );
 }
 
 class _ModeSelector extends StatelessWidget {
@@ -515,37 +653,8 @@ class _RecentSessions extends StatelessWidget {
   }
 }
 
-class SettingsSheet extends StatefulWidget {
-  const SettingsSheet({super.key});
-
-  @override
-  State<SettingsSheet> createState() => _SettingsSheetState();
-}
-
-class _SettingsSheetState extends State<SettingsSheet> {
-  late final TextEditingController _endpointController;
-  late final TextEditingController _usernameController;
-  late final TextEditingController _passwordController;
-  late final TextEditingController _remotePathController;
-
-  @override
-  void initState() {
-    super.initState();
-    final settings = AppScope.read(context).data.settings.webDav;
-    _endpointController = TextEditingController(text: settings.endpoint);
-    _usernameController = TextEditingController(text: settings.username);
-    _passwordController = TextEditingController(text: settings.password);
-    _remotePathController = TextEditingController(text: settings.remotePath);
-  }
-
-  @override
-  void dispose() {
-    _endpointController.dispose();
-    _usernameController.dispose();
-    _passwordController.dispose();
-    _remotePathController.dispose();
-    super.dispose();
-  }
+class _TimerSettingsSheet extends StatelessWidget {
+  const _TimerSettingsSheet();
 
   @override
   Widget build(BuildContext context) {
@@ -558,7 +667,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
         padding: EdgeInsets.fromLTRB(20, 0, 20, 20 + bottom),
         shrinkWrap: true,
         children: [
-          Text('设置', style: Theme.of(context).textTheme.titleLarge),
+          Text('计时设置', style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 16),
           NumberStepper(
             icon: Icons.psychology_alt_outlined,
@@ -611,21 +720,32 @@ class _SettingsSheetState extends State<SettingsSheet> {
             },
           ),
           const Divider(height: 28),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            secondary: const Icon(Icons.notifications_active_outlined),
-            title: const Text('切换音效'),
-            value: settings.completionSoundEnabled,
-            onChanged: (value) {
-              controller.updateSettings(
-                settings.copyWith(completionSoundEnabled: value),
-              );
-            },
-          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FeedbackSettingsSheet extends StatelessWidget {
+  const _FeedbackSettingsSheet();
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = AppScope.watch(context);
+    final settings = controller.data.settings;
+
+    return SafeArea(
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+        shrinkWrap: true,
+        children: [
+          Text('切换提醒', style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 12),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
             secondary: const Icon(Icons.vibration),
             title: const Text('切换震动'),
+            subtitle: const Text('专注和休息阶段切换时使用手机震动提醒'),
             value: settings.completionHapticsEnabled,
             onChanged: (value) {
               controller.updateSettings(
@@ -633,8 +753,68 @@ class _SettingsSheetState extends State<SettingsSheet> {
               );
             },
           ),
-          const Divider(height: 28),
-          Text('WebDAV', style: Theme.of(context).textTheme.titleMedium),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            secondary: const Icon(Icons.notifications_active_outlined),
+            title: const Text('切换音效'),
+            subtitle: const Text('默认关闭，避免打扰；需要时可手动开启'),
+            value: settings.completionSoundEnabled,
+            onChanged: (value) {
+              controller.updateSettings(
+                settings.copyWith(completionSoundEnabled: value),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _WebDavSettingsSheet extends StatefulWidget {
+  const _WebDavSettingsSheet();
+
+  @override
+  State<_WebDavSettingsSheet> createState() => _WebDavSettingsSheetState();
+}
+
+class _WebDavSettingsSheetState extends State<_WebDavSettingsSheet> {
+  late final TextEditingController _endpointController;
+  late final TextEditingController _usernameController;
+  late final TextEditingController _passwordController;
+  late final TextEditingController _remotePathController;
+
+  @override
+  void initState() {
+    super.initState();
+    final settings = AppScope.read(context).data.settings.webDav;
+    _endpointController = TextEditingController(text: settings.endpoint);
+    _usernameController = TextEditingController(text: settings.username);
+    _passwordController = TextEditingController(text: settings.password);
+    _remotePathController = TextEditingController(text: settings.remotePath);
+  }
+
+  @override
+  void dispose() {
+    _endpointController.dispose();
+    _usernameController.dispose();
+    _passwordController.dispose();
+    _remotePathController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = AppScope.watch(context);
+    final settings = controller.data.settings;
+    final bottom = MediaQuery.viewInsetsOf(context).bottom;
+
+    return SafeArea(
+      child: ListView(
+        padding: EdgeInsets.fromLTRB(20, 0, 20, 20 + bottom),
+        shrinkWrap: true,
+        children: [
+          Text('WebDAV 同步', style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 12),
           TextField(
             controller: _endpointController,

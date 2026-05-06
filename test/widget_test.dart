@@ -30,15 +30,23 @@ void main() {
     await tester.pumpWidget(TomatoApp(controller: controller));
     await tester.pump();
 
-    expect(find.text('TomatoClock'), findsOneWidget);
+    expect(find.text('番茄钟'), findsWidgets);
     expect(find.text('25:00'), findsOneWidget);
     expect(find.text('开始'), findsOneWidget);
     expect(find.byIcon(Icons.play_arrow), findsOneWidget);
+    expect(find.text('专注热力图'), findsNothing);
 
-    await tester.scrollUntilVisible(find.text('专注热力图'), 360);
+    await tester.tap(find.text('统计'));
+    await tester.pumpAndSettle();
     expect(find.text('专注热力图'), findsOneWidget);
 
-    await tester.tap(find.byIcon(Icons.settings_outlined));
+    await tester.tap(find.text('设置'));
+    await tester.pumpAndSettle();
+    expect(find.text('计时设置'), findsOneWidget);
+    expect(find.text('切换提醒'), findsOneWidget);
+    expect(find.text('WebDAV 同步'), findsOneWidget);
+
+    await tester.tap(find.text('切换提醒'));
     await tester.pumpAndSettle();
     expect(find.text('切换震动'), findsOneWidget);
     expect(find.text('切换音效'), findsOneWidget);
