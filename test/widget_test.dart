@@ -85,6 +85,7 @@ void main() {
     await tester.tap(find.text('统计'));
     await tester.pumpAndSettle();
     expect(find.text('专注热力图'), findsOneWidget);
+    expect(find.text('今日番茄'), findsNothing);
 
     await tester.tap(find.text('设置'));
     await tester.pumpAndSettle();
@@ -119,9 +120,10 @@ void main() {
     await tester.tap(find.text('备份'));
     await tester.pumpAndSettle();
     expect(find.text('本地备份'), findsOneWidget);
+    expect(find.text('备份目录'), findsOneWidget);
     expect(find.text('立即同步'), findsOneWidget);
     expect(find.text('自动同步'), findsOneWidget);
-    expect(find.text('WebDAV'), findsOneWidget);
+    expect(find.text('WebDAV 设置'), findsOneWidget);
 
     controller.dispose();
   });

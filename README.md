@@ -38,7 +38,7 @@ WebDAV 同步会把本地 JSON 数据和远端 JSON 数据合并：
 
 自动同步目前是应用进程存活时的定时同步：应用在前台、后台仍未被系统挂起，或处于 Android 画中画时，会按设置间隔尝试同步。Android 在应用被系统完全挂起或杀死后继续定时联网，需要 WorkManager 一类原生后台任务；项目暂时不引入这部分，以保持实现轻量。
 
-本地备份会在应用数据目录下创建 `local_backups/gan_backup_YYYYMMDD_HHMMSS.json`，内容和 WebDAV 备份使用同一份 JSON 结构。
+本地备份默认会在应用数据目录下创建 `local_backups/gan_backup_YYYYMMDD_HHMMSS.json`，也可以在设置里指定其他目录；内容和 WebDAV 备份使用同一份 JSON 结构。
 
 ## 开发
 

@@ -261,6 +261,7 @@ void main() {
       completionHapticsEnabled: false,
       backupAutoSyncEnabled: false,
       backupAutoSyncIntervalMinutes: 45,
+      localBackupDirectory: '/tmp/gan_backups',
     );
 
     final decoded = AppSettings.fromJson(settings.toJson());
@@ -272,5 +273,6 @@ void main() {
     expect(decoded.completionHapticsEnabled, isFalse);
     expect(decoded.backupAutoSyncEnabled, isFalse);
     expect(decoded.backupAutoSyncIntervalMinutes, 45);
+    expect(decoded.localBackupDirectory, '/tmp/gan_backups');
   });
 }

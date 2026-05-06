@@ -173,7 +173,48 @@ void main() {
         .toList();
     expect(files, hasLength(1));
     expect(await files.single.readAsString(), contains('"schemaVersion": 1'));
-    expect(controller.takeMessage(), contains('本地备份已保存'));
+    expect(controller.lastLocalBackupError, isNull);
+    expect(controller.lastLocalBackupPath, files.single.path);
+    expect(controller.lastLocalBackupAt, isNotNull);
+
+    controller.dispose();
+  });
+
+  test('creates local backup in configured directory', () async {
+    final dataDirectory = await Directory.systemTemp.createTemp(
+      'tomato_clock_data_test_',
+    );
+    final backupDirectory = await Directory.systemTemp.createTemp(
+      'tomato_clock_selected_backup_',
+    );
+    addTearDown(() async {
+      for (final directory in [dataDirectory, backupDirectory]) {
+        if (await directory.exists()) {
+          await directory.delete(recursive: true);
+        }
+      }
+    });
+
+    final data = TomatoData.initial().copyWith(
+      settings: AppSettings(localBackupDirectory: backupDirectory.path),
+    );
+    final store = AppStorage(dataDirectory: dataDirectory.path);
+    await store.save(data);
+    final controller = AppController(
+      storage: store,
+      completionFeedback: const NoopCompletionFeedback(),
+    );
+
+    await controller.load();
+    await controller.createLocalBackup();
+
+    final files = backupDirectory
+        .listSync()
+        .whereType<File>()
+        .where((file) => file.path.endsWith('.json'))
+        .toList();
+    expect(files, hasLength(1));
+    expect(controller.lastLocalBackupPath, files.single.path);
 
     controller.dispose();
   });

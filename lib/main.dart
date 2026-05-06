@@ -1010,9 +1010,7 @@ class _SettingsPage extends StatelessWidget {
                   ListTile(
                     leading: const Icon(Icons.tune),
                     title: const Text('计时设置'),
-                    subtitle: Text(
-                      '专注 ${settings.focusMinutes} 分钟 · 短休 ${settings.shortBreakMinutes} 分钟 · 长休 ${settings.longBreakMinutes} 分钟 · 静默 ${settings.idleFocusSeconds} 秒',
-                    ),
+                    subtitle: const Text('时长、循环和静默显示'),
                     trailing: const Icon(Icons.chevron_right),
                     onTap: () => _openTimerSettings(context),
                   ),
@@ -1020,7 +1018,7 @@ class _SettingsPage extends StatelessWidget {
                   ListTile(
                     leading: Icon(_themeModeIcon(settings.themeMode)),
                     title: const Text('外观'),
-                    subtitle: Text(settings.themeMode.label),
+                    subtitle: const Text('主题模式'),
                     trailing: const Icon(Icons.chevron_right),
                     onTap: () => _openAppearanceSettings(context),
                   ),
@@ -1028,9 +1026,7 @@ class _SettingsPage extends StatelessWidget {
                   ListTile(
                     leading: const Icon(Icons.vibration),
                     title: const Text('切换提醒'),
-                    subtitle: Text(
-                      '${settings.completionHapticsEnabled ? '震动开启' : '震动关闭'} · ${settings.completionSoundEnabled ? '音效开启' : '音效关闭'}',
-                    ),
+                    subtitle: const Text('震动和音效'),
                     trailing: const Icon(Icons.chevron_right),
                     onTap: () => _openFeedbackSettings(context),
                   ),
@@ -1038,11 +1034,7 @@ class _SettingsPage extends StatelessWidget {
                   ListTile(
                     leading: const Icon(Icons.backup_outlined),
                     title: const Text('备份'),
-                    subtitle: Text(
-                      settings.webDav.isConfigured
-                          ? 'WebDAV · 本地备份 · 自动同步'
-                          : '本地备份 · 配置 WebDAV 后自动同步',
-                    ),
+                    subtitle: const Text('本地和 WebDAV'),
                     trailing: const Icon(Icons.chevron_right),
                     onTap: () => _openBackupSettings(context),
                   ),
@@ -1117,6 +1109,10 @@ class _BackupPage extends StatelessWidget {
     final status = controller.syncing
         ? '正在同步'
         : controller.lastSyncError ?? _lastSyncLabel(lastSyncAt);
+    final backupStatus = _localBackupStatus(controller);
+    final backupStatusColor = controller.lastLocalBackupError == null
+        ? scheme.onSurfaceVariant
+        : scheme.error;
 
     return Center(
       child: ConstrainedBox(
@@ -1156,6 +1152,15 @@ class _BackupPage extends StatelessWidget {
                             : scheme.error,
                       ),
                     ),
+                    const SizedBox(height: 10),
+                    Text(
+                      backupStatus,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: backupStatusColor,
+                      ),
+                    ),
                     const SizedBox(height: 16),
                     Wrap(
                       spacing: 12,
@@ -1171,11 +1176,6 @@ class _BackupPage extends StatelessWidget {
                           label: const Text('立即同步'),
                         ),
                         OutlinedButton.icon(
-                          onPressed: controller.createLocalBackup,
-                          icon: const Icon(Icons.save_alt_outlined),
-                          label: const Text('本地备份'),
-                        ),
-                        OutlinedButton.icon(
                           onPressed: controller.syncing
                               ? null
                               : () => _openWebDavSettings(context),
@@ -1188,6 +1188,8 @@ class _BackupPage extends StatelessWidget {
                 ),
               ),
             ),
+            const SizedBox(height: 16),
+            _LocalBackupCard(controller: controller, settings: settings),
             const SizedBox(height: 16),
             Card(
               child: Column(
@@ -1263,6 +1265,119 @@ class _BackupPage extends StatelessWidget {
       showDragHandle: true,
       isScrollControlled: true,
       builder: (_) => const _WebDavSettingsSheet(),
+    );
+  }
+}
+
+class _LocalBackupCard extends StatefulWidget {
+  const _LocalBackupCard({required this.controller, required this.settings});
+
+  final AppController controller;
+  final AppSettings settings;
+
+  @override
+  State<_LocalBackupCard> createState() => _LocalBackupCardState();
+}
+
+class _LocalBackupCardState extends State<_LocalBackupCard> {
+  late final TextEditingController _directoryController;
+  late final FocusNode _focusNode;
+
+  @override
+  void initState() {
+    super.initState();
+    _directoryController = TextEditingController(
+      text: widget.settings.localBackupDirectory,
+    );
+    _focusNode = FocusNode()..addListener(_handleFocusChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant _LocalBackupCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final next = widget.settings.localBackupDirectory;
+    if (!_focusNode.hasFocus && _directoryController.text != next) {
+      _directoryController.text = next;
+    }
+  }
+
+  @override
+  void dispose() {
+    _focusNode
+      ..removeListener(_handleFocusChanged)
+      ..dispose();
+    _directoryController.dispose();
+    super.dispose();
+  }
+
+  void _handleFocusChanged() {
+    if (!_focusNode.hasFocus) {
+      unawaited(_saveDirectory());
+    }
+  }
+
+  Future<void> _saveDirectory() async {
+    final directory = _directoryController.text.trim();
+    if (directory == widget.controller.data.settings.localBackupDirectory) {
+      return;
+    }
+    await widget.controller.updateSettings(
+      widget.controller.data.settings.copyWith(localBackupDirectory: directory),
+    );
+  }
+
+  Future<void> _createBackup() async {
+    final directory = _directoryController.text.trim();
+    await widget.controller.updateSettings(
+      widget.controller.data.settings.copyWith(localBackupDirectory: directory),
+    );
+    await widget.controller.createLocalBackup(directory: directory);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.folder_copy_outlined,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    '本地备份',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
+                FilledButton.icon(
+                  onPressed: _createBackup,
+                  icon: const Icon(Icons.save_alt_outlined),
+                  label: const Text('备份'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: _directoryController,
+              focusNode: _focusNode,
+              decoration: const InputDecoration(
+                labelText: '备份目录',
+                hintText: '留空使用应用数据目录',
+                prefixIcon: Icon(Icons.folder_outlined),
+                border: OutlineInputBorder(),
+              ),
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) => unawaited(_saveDirectory()),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -1900,9 +2015,6 @@ class _TodayStats extends StatelessWidget {
     final todayFocusSessions = data.sessions
         .where((session) => session.isRecordable && session.dayKey == today)
         .toList();
-    final todayCompletedSessions = todayFocusSessions
-        .where((session) => session.isCompletedPomodoro)
-        .toList();
     final todaySeconds = todayFocusSessions.fold<int>(
       0,
       (total, session) => total + session.focusedSeconds,
@@ -1912,12 +2024,6 @@ class _TodayStats extends StatelessWidget {
       builder: (context, constraints) {
         final narrow = constraints.maxWidth < 560;
         final cards = [
-          _StatCard(
-            icon: Icons.check_circle_outline,
-            label: '今日番茄',
-            value: '${todayCompletedSessions.length}',
-            detail: '已完成',
-          ),
           _StatCard(
             icon: Icons.timer_outlined,
             label: '今日专注',
@@ -2518,6 +2624,18 @@ String _lastSyncLabel(DateTime? value) {
     return '尚未同步';
   }
   return '上次同步 ${formatDateTime(value)}';
+}
+
+String _localBackupStatus(AppController controller) {
+  final error = controller.lastLocalBackupError;
+  if (error != null) {
+    return error;
+  }
+  final path = controller.lastLocalBackupPath;
+  if (path == null) {
+    return '本地备份尚未创建';
+  }
+  return '本地备份已保存 ${formatDateTime(controller.lastLocalBackupAt!)} · $path';
 }
 
 String _phaseLabel(TimerPhase phase) {

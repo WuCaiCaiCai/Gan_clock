@@ -31,6 +31,9 @@ class AppController extends ChangeNotifier {
   DateTime? _lastAutoSyncAttemptAt;
   DateTime? _lastSyncAt;
   String? _lastSyncError;
+  DateTime? _lastLocalBackupAt;
+  String? _lastLocalBackupPath;
+  String? _lastLocalBackupError;
   bool _loading = true;
   bool _syncing = false;
   bool _disposed = false;
@@ -45,6 +48,12 @@ class AppController extends ChangeNotifier {
   DateTime? get lastSyncAt => _lastSyncAt;
 
   String? get lastSyncError => _lastSyncError;
+
+  DateTime? get lastLocalBackupAt => _lastLocalBackupAt;
+
+  String? get lastLocalBackupPath => _lastLocalBackupPath;
+
+  String? get lastLocalBackupError => _lastLocalBackupError;
 
   String? takeMessage() {
     final current = _message;
@@ -116,16 +125,22 @@ class AppController extends ChangeNotifier {
     await _syncNow(silent: false, force: true);
   }
 
-  Future<void> createLocalBackup() async {
+  Future<void> createLocalBackup({String? directory}) async {
     try {
       await _storage.save(_data);
       final storage = _storage;
+      final directoryPath = directory ?? _data.settings.localBackupDirectory;
       final path = storage is AppStorage
-          ? await storage.createLocalBackup(_data)
-          : await AppStorage().createLocalBackup(_data);
-      _message = '本地备份已保存：$path';
+          ? await storage.createLocalBackup(_data, directoryPath: directoryPath)
+          : await AppStorage().createLocalBackup(
+              _data,
+              directoryPath: directoryPath,
+            );
+      _lastLocalBackupAt = DateTime.now();
+      _lastLocalBackupPath = path;
+      _lastLocalBackupError = null;
     } on Object {
-      _message = '本地备份失败';
+      _lastLocalBackupError = '本地备份失败，请检查目录是否可写';
     } finally {
       _notify();
     }
@@ -156,9 +171,6 @@ class AppController extends ChangeNotifier {
       await _storage.save(_data);
       _lastSyncAt = attemptedAt;
       _lastSyncError = null;
-      if (!silent) {
-        _message = 'WebDAV 同步完成';
-      }
     } on WebDavException catch (error) {
       _lastSyncError = error.message;
       if (!silent) {

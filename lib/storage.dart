@@ -42,11 +42,18 @@ class AppStorage implements TomatoStore {
     await temp.rename(file.path);
   }
 
-  Future<String> createLocalBackup(TomatoData data, {DateTime? at}) async {
-    final directory = await _resolveDataDirectory();
-    final backupDirectory = Directory(
-      '${directory.path}${Platform.pathSeparator}local_backups',
-    );
+  Future<String> createLocalBackup(
+    TomatoData data, {
+    DateTime? at,
+    String? directoryPath,
+  }) async {
+    final configured = directoryPath?.trim();
+    final backupDirectory = configured != null && configured.isNotEmpty
+        ? Directory(configured)
+        : Directory(
+            '${(await _resolveDataDirectory()).path}'
+            '${Platform.pathSeparator}local_backups',
+          );
     await backupDirectory.create(recursive: true);
     final createdAt = at ?? DateTime.now();
     final basePath =

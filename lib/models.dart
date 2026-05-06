@@ -142,6 +142,7 @@ class AppSettings {
     this.completionHapticsEnabled = true,
     this.backupAutoSyncEnabled = true,
     this.backupAutoSyncIntervalMinutes = 30,
+    this.localBackupDirectory = '',
     this.webDav = const WebDavSettings(),
   });
 
@@ -156,6 +157,7 @@ class AppSettings {
   final bool completionHapticsEnabled;
   final bool backupAutoSyncEnabled;
   final int backupAutoSyncIntervalMinutes;
+  final String localBackupDirectory;
   final WebDavSettings webDav;
 
   AppSettings copyWith({
@@ -170,6 +172,7 @@ class AppSettings {
     bool? completionHapticsEnabled,
     bool? backupAutoSyncEnabled,
     int? backupAutoSyncIntervalMinutes,
+    String? localBackupDirectory,
     WebDavSettings? webDav,
   }) {
     return AppSettings(
@@ -189,6 +192,7 @@ class AppSettings {
           backupAutoSyncEnabled ?? this.backupAutoSyncEnabled,
       backupAutoSyncIntervalMinutes:
           backupAutoSyncIntervalMinutes ?? this.backupAutoSyncIntervalMinutes,
+      localBackupDirectory: localBackupDirectory ?? this.localBackupDirectory,
       webDav: webDav ?? this.webDav,
     );
   }
@@ -206,6 +210,7 @@ class AppSettings {
       'completionHapticsEnabled': completionHapticsEnabled,
       'backupAutoSyncEnabled': backupAutoSyncEnabled,
       'backupAutoSyncIntervalMinutes': backupAutoSyncIntervalMinutes,
+      'localBackupDirectory': localBackupDirectory,
       'webDav': webDav.toJson(),
     };
   }
@@ -240,6 +245,7 @@ class AppSettings {
         1440,
         30,
       ),
+      localBackupDirectory: value['localBackupDirectory'] as String? ?? '',
       webDav: WebDavSettings.fromJson(value['webDav']),
     );
   }

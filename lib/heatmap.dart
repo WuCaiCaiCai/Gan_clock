@@ -38,6 +38,29 @@ class _FocusHeatmapState extends State<FocusHeatmap> {
       0,
       (total, cell) => total + cell.seconds,
     );
+    final heatmapBody = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _scope == HeatmapScope.month
+            ? _MonthHeatmap(
+                cells: cells,
+                selectedDate: selectedCell.date,
+                onSelected: _selectDate,
+              )
+            : _YearHeatmap(
+                cells: cells,
+                selectedDate: selectedCell.date,
+                onSelected: _selectDate,
+              ),
+        const SizedBox(height: 12),
+        const _HeatmapLegend(),
+      ],
+    );
+    final summary = _HeatmapSummary(
+      label: _scopeLabel(now, _scope),
+      activeDays: activeDays,
+      totalSeconds: totalSeconds,
+    );
 
     return RepaintBoundary(
       child: Card(
@@ -77,31 +100,46 @@ class _FocusHeatmapState extends State<FocusHeatmap> {
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
-              Text(
-                '${_scopeLabel(now, _scope)} · $activeDays 天 · ${_formatDuration(totalSeconds)}',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
+              const SizedBox(height: 16),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final wide = constraints.maxWidth >= 560;
+                  if (wide) {
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(child: heatmapBody),
+                        const SizedBox(width: 16),
+                        SizedBox(
+                          width: 206,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              summary,
+                              if (selectedCell.inScope) ...[
+                                const SizedBox(height: 12),
+                                _SelectedDaySummary(cell: selectedCell),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ],
+                    );
+                  }
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      summary,
+                      const SizedBox(height: 14),
+                      heatmapBody,
+                      if (selectedCell.inScope) ...[
+                        const SizedBox(height: 12),
+                        _SelectedDaySummary(cell: selectedCell),
+                      ],
+                    ],
+                  );
+                },
               ),
-              const SizedBox(height: 14),
-              _scope == HeatmapScope.month
-                  ? _MonthHeatmap(
-                      cells: cells,
-                      selectedDate: selectedCell.date,
-                      onSelected: _selectDate,
-                    )
-                  : _YearHeatmap(
-                      cells: cells,
-                      selectedDate: selectedCell.date,
-                      onSelected: _selectDate,
-                    ),
-              const SizedBox(height: 12),
-              if (selectedCell.inScope) ...[
-                _SelectedDaySummary(cell: selectedCell),
-                const SizedBox(height: 12),
-              ],
-              const _HeatmapLegend(),
             ],
           ),
         ),
@@ -113,6 +151,106 @@ class _FocusHeatmapState extends State<FocusHeatmap> {
     setState(() {
       _selectedDate = DateTime(date.year, date.month, date.day);
     });
+  }
+}
+
+class _HeatmapSummary extends StatelessWidget {
+  const _HeatmapSummary({
+    required this.label,
+    required this.activeDays,
+    required this.totalSeconds,
+  });
+
+  final String label;
+  final int activeDays;
+  final int totalSeconds;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final vertical = constraints.maxWidth < 260;
+        final metrics = [
+          _HeatmapMetric(
+            icon: Icons.date_range_outlined,
+            label: label,
+            value: '$activeDays 天',
+          ),
+          _HeatmapMetric(
+            icon: Icons.timer_outlined,
+            label: '累计',
+            value: _formatDuration(totalSeconds),
+          ),
+        ];
+        if (vertical) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [metrics[0], const SizedBox(height: 8), metrics[1]],
+          );
+        }
+        return Row(
+          children: [
+            Expanded(child: metrics[0]),
+            const SizedBox(width: 8),
+            Expanded(child: metrics[1]),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _HeatmapMetric extends StatelessWidget {
+  const _HeatmapMetric({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Row(
+          children: [
+            Icon(icon, size: 18, color: scheme.primary),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    value,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
