@@ -129,12 +129,21 @@ ThemeMode _flutterThemeMode(AppThemeMode mode) {
   }
 }
 
-void _syncSystemUi(BuildContext context, TimerMode mode) {
+void _syncSystemUi(
+  BuildContext context,
+  TimerMode mode, {
+  required bool immersive,
+}) {
   final background = _modePalette(mode).backgroundFor(context);
   final backgroundBrightness = ThemeData.estimateBrightnessForColor(background);
   final iconBrightness = backgroundBrightness == Brightness.dark
       ? Brightness.light
       : Brightness.dark;
+  unawaited(
+    SystemChrome.setEnabledSystemUIMode(
+      immersive ? SystemUiMode.immersiveSticky : SystemUiMode.edgeToEdge,
+    ),
+  );
   SystemChrome.setSystemUIOverlayStyle(
     SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
@@ -268,11 +277,11 @@ class _TomatoHomePageState extends State<TomatoHomePage>
     final controller = AppScope.watch(context);
     final data = controller.data;
     final timer = data.timer;
-    _syncSystemUi(context, timer.mode);
     final hideChrome =
         (_chromeHidden || _inPictureInPicture) &&
         _selectedIndex == 0 &&
         timer.phase == TimerPhase.running;
+    _syncSystemUi(context, timer.mode, immersive: hideChrome);
 
     return Listener(
       behavior: HitTestBehavior.translucent,
@@ -555,7 +564,11 @@ class _TimerPage extends StatelessWidget {
       builder: (context, constraints) {
         final actionsBottom = _actionsBottom(context);
         final bottomReserve = actionsBottom + 72;
-        final quoteTop = (constraints.maxHeight * 0.14).clamp(70.0, 118.0);
+        final quoteTop = (constraints.maxHeight * 0.10).clamp(54.0, 92.0);
+        final contentOffset = (constraints.maxHeight * -0.04).clamp(
+          -42.0,
+          -26.0,
+        );
         final maxRingDimension = math.min(
           318.0,
           math.max(216.0, constraints.maxHeight - quoteTop - bottomReserve),
@@ -567,9 +580,12 @@ class _TimerPage extends StatelessWidget {
           child: Stack(
             children: [
               Center(
-                child: TimerProgressRing(
-                  snapshot: timer,
-                  maxDimension: maxRingDimension,
+                child: Transform.translate(
+                  offset: Offset(0, contentOffset),
+                  child: TimerProgressRing(
+                    snapshot: timer,
+                    maxDimension: maxRingDimension,
+                  ),
                 ),
               ),
               Positioned(
@@ -577,7 +593,7 @@ class _TimerPage extends StatelessWidget {
                 right: 24,
                 top: quoteTop,
                 child: _ChromeFade(
-                  hidden: quiet,
+                  hidden: false,
                   slideOffset: const Offset(0, -0.08),
                   child: _HitokotoLine(mode: timer.mode),
                 ),
@@ -713,42 +729,55 @@ class _DockItem extends StatelessWidget {
     return Expanded(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 2),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(999),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 220),
-            curve: Curves.easeOutCubic,
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            decoration: BoxDecoration(
-              color: selected ? scheme.primaryContainer : Colors.transparent,
-              borderRadius: BorderRadius.circular(999),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  selected ? selectedIcon : icon,
-                  size: 20,
-                  color: selected ? scheme.onPrimaryContainer : scheme.primary,
+        child: SizedBox(
+          height: 44,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(999),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutCubic,
+              alignment: Alignment.center,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              decoration: BoxDecoration(
+                color: selected
+                    ? scheme.primary.withAlpha(28)
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(
+                  color: selected
+                      ? scheme.primary.withAlpha(58)
+                      : Colors.transparent,
                 ),
-                const SizedBox(width: 6),
-                Flexible(
-                  child: Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                      color: selected
-                          ? scheme.onPrimaryContainer
-                          : scheme.onSurfaceVariant,
-                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                      letterSpacing: 0,
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    selected ? selectedIcon : icon,
+                    size: 20,
+                    color: selected ? scheme.primary : scheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                        color: selected
+                            ? scheme.primary
+                            : scheme.onSurfaceVariant,
+                        fontWeight: selected
+                            ? FontWeight.w700
+                            : FontWeight.w500,
+                        letterSpacing: 0,
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -1304,11 +1333,19 @@ class PipTimerCapsule extends StatelessWidget {
   Widget build(BuildContext context) {
     final total = math.max(1, snapshot.totalSeconds);
     final remaining = snapshot.remainingSeconds.clamp(0, total);
-    final remainingProgress = remaining / total;
+    final elapsed = (total - remaining).clamp(0, total);
+    final progress = elapsed / total;
     final palette = _modePalette(snapshot.mode);
-    final capsuleColor = palette.accent;
-    final onCapsule = _contrastOn(capsuleColor);
-    final textStyle = Theme.of(context).textTheme.displaySmall?.copyWith(
+    final isBreak = snapshot.mode != TimerMode.focus;
+    final background = palette.backgroundFor(context);
+    final softColor = Color.lerp(
+      background,
+      palette.accent,
+      Theme.of(context).colorScheme.brightness == Brightness.dark ? 0.46 : 0.24,
+    )!;
+    final midColor = Color.lerp(softColor, palette.accent, 0.58)!;
+    final onCapsule = _contrastOn(palette.accent);
+    final textStyle = Theme.of(context).textTheme.headlineLarge?.copyWith(
       height: 0.95,
       letterSpacing: 0,
       fontWeight: FontWeight.w800,
@@ -1319,91 +1356,124 @@ class PipTimerCapsule extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final compact =
-            constraints.maxWidth < 260 || constraints.maxHeight < 120;
-        final horizontalPadding = compact ? 14.0 : 18.0;
-        final verticalPadding = compact ? 8.0 : 12.0;
-        final side = compact ? 34.0 : 40.0;
+            constraints.maxWidth < 260 || constraints.maxHeight < 110;
+        final outerPadding = compact ? 6.0 : 8.0;
+        final capsuleHeight = math
+            .min(
+              compact ? 58.0 : 68.0,
+              constraints.maxHeight - outerPadding * 2,
+            )
+            .clamp(46.0, 68.0);
+        final side = compact ? 30.0 : 34.0;
+        final radius = BorderRadius.circular(capsuleHeight / 2);
+        final backgroundGradient = LinearGradient(
+          begin: isBreak ? Alignment.centerRight : Alignment.centerLeft,
+          end: isBreak ? Alignment.centerLeft : Alignment.centerRight,
+          colors: isBreak ? [midColor, softColor] : [softColor, midColor],
+        );
+        final progressGradient = LinearGradient(
+          begin: isBreak ? Alignment.centerRight : Alignment.centerLeft,
+          end: isBreak ? Alignment.centerLeft : Alignment.centerRight,
+          colors: isBreak
+              ? [palette.accent, midColor, softColor]
+              : [softColor, midColor, palette.accent],
+        );
 
         return Padding(
-          padding: EdgeInsets.all(compact ? 12 : 18),
-          child: FractionallySizedBox(
-            widthFactor: 0.92,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(999),
-              child: Material(
-                color: capsuleColor,
-                child: Stack(
-                  children: [
-                    Positioned.fill(
-                      child: FractionallySizedBox(
-                        alignment: Alignment.centerLeft,
-                        widthFactor: remainingProgress.clamp(0.0, 1.0),
-                        child: ColoredBox(
-                          color: onCapsule.withAlpha(
-                            Theme.of(context).colorScheme.brightness ==
-                                    Brightness.dark
-                                ? 30
-                                : 24,
+          padding: EdgeInsets.all(outerPadding),
+          child: SizedBox(
+            width: double.infinity,
+            height: capsuleHeight,
+            child: Material(
+              color: Colors.transparent,
+              borderRadius: radius,
+              clipBehavior: Clip.antiAlias,
+              child: Stack(
+                children: [
+                  Positioned.fill(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(gradient: backgroundGradient),
+                    ),
+                  ),
+                  TweenAnimationBuilder<double>(
+                    tween: Tween<double>(end: progress),
+                    duration: const Duration(milliseconds: 640),
+                    curve: Curves.easeOutCubic,
+                    builder: (context, value, child) {
+                      return Align(
+                        alignment: isBreak
+                            ? Alignment.centerRight
+                            : Alignment.centerLeft,
+                        child: FractionallySizedBox(
+                          widthFactor: value.clamp(0.0, 1.0),
+                          heightFactor: 1,
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              gradient: progressGradient,
+                            ),
                           ),
                         ),
-                      ),
+                      );
+                    },
+                  ),
+                  Padding(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: compact ? 8 : 10,
+                      vertical: compact ? 5 : 6,
                     ),
-                    Padding(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: horizontalPadding,
-                        vertical: verticalPadding,
-                      ),
-                      child: Row(
-                        children: [
-                          SizedBox.square(
-                            dimension: side,
-                            child: Center(
-                              child: Icon(
-                                _modeIcon(snapshot.mode),
-                                size: compact ? 18 : 20,
-                                color: onCapsule,
-                              ),
+                    child: Row(
+                      children: [
+                        SizedBox.square(
+                          dimension: side,
+                          child: Center(
+                            child: Icon(
+                              isBreak
+                                  ? Icons.self_improvement_outlined
+                                  : Icons.radio_button_checked,
+                              size: compact ? 17 : 19,
+                              color: onCapsule,
                             ),
                           ),
-                          Expanded(
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              child: Text(
-                                formatClock(snapshot.remainingSeconds),
-                                textAlign: TextAlign.center,
-                                softWrap: false,
-                                style:
-                                    textStyle ??
-                                    TextStyle(
-                                      fontSize: compact ? 34 : 42,
-                                      color: onCapsule,
-                                    ),
-                              ),
+                        ),
+                        Expanded(
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              formatClock(snapshot.remainingSeconds),
+                              textAlign: TextAlign.center,
+                              softWrap: false,
+                              style:
+                                  textStyle ??
+                                  TextStyle(
+                                    fontSize: compact ? 32 : 40,
+                                    color: onCapsule,
+                                  ),
                             ),
                           ),
-                          SizedBox.square(
-                            dimension: side,
-                            child: IconButton(
-                              tooltip: keepScreenOn ? '关闭屏幕常亮' : '开启屏幕常亮',
-                              padding: EdgeInsets.zero,
-                              style: IconButton.styleFrom(
-                                backgroundColor: onCapsule.withAlpha(28),
-                                foregroundColor: onCapsule,
-                              ),
-                              iconSize: compact ? 18 : 20,
-                              onPressed: onToggleKeepScreenOn,
-                              icon: Icon(
-                                keepScreenOn
-                                    ? Icons.lightbulb
-                                    : Icons.lightbulb_outline,
-                              ),
+                        ),
+                        SizedBox.square(
+                          dimension: side,
+                          child: IconButton(
+                            tooltip: keepScreenOn ? '关闭屏幕常亮' : '开启屏幕常亮',
+                            padding: EdgeInsets.zero,
+                            style: IconButton.styleFrom(
+                              foregroundColor: onCapsule,
+                              backgroundColor: Colors.transparent,
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                            iconSize: compact ? 17 : 19,
+                            onPressed: onToggleKeepScreenOn,
+                            icon: Icon(
+                              keepScreenOn
+                                  ? Icons.lightbulb
+                                  : Icons.lightbulb_outline,
                             ),
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
           ),
