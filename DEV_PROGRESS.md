@@ -4,7 +4,7 @@
 
 跨平台番茄钟，Flutter + Dart，Material Design 3，轻量低功耗。
 
-**当前阶段:** 主计时闭环已完成，下一步聚焦通知/音效、悬浮窗瘦身与统计深化。
+**当前阶段:** 纯 Dart 主功能闭环已完成；Android Kotlin 与 MethodChannel 已移除。
 
 ## 完成
 
@@ -25,14 +25,14 @@
 - [x] 自动创建远端目录层级
 - [x] TLS/网络错误处理
 
-### Android 原生层
-- [x] 悬浮窗前台服务 (`TomatoOverlayService.kt`) — 倒计时显示、拖拽移动、通知栏
-- [x] MethodChannel 桥接 (`MainActivity.kt`)
-- [x] SYSTEM_ALERT_WINDOW 权限处理
-- [x] 前台服务通知渠道
+### 完成反馈
+- [x] 计时完成反馈 (`completion_feedback.dart`) — 系统提示音 + 触感反馈
+- [x] 完成反馈设置 — 音效/触感独立开关
 
 ### 平台脚手架
 - [x] Android / iOS / Linux / macOS / Windows 平台目录就绪
+- [x] Android 入口改为 `io.flutter.embedding.android.FlutterActivity`
+- [x] Android Gradle 脚本改为 Groovy，移除 Kotlin DSL 和 Kotlin 插件
 
 ## 待开发
 
@@ -42,40 +42,49 @@
 - [x] 计时引擎 — 纯 Dart，跨平台复用
 - [x] 主计时页面 — 圆环进度、开始/暂停/跳过按钮
 - [x] 模式切换 — 专注 / 短休息 / 长休息
-- [ ] 计时完成通知/音效
+- [x] 计时完成通知/音效
 
-### 悬浮窗
-- [ ] 计时逻辑从 Kotlin 移入 Dart
-- [ ] Kotlin 服务瘦身 — 仅保留 UI 壳
+### 原生层清理
+- [x] 计时逻辑从 Kotlin 移入 Dart
+- [x] 删除 Kotlin 悬浮窗服务与 MethodChannel 桥接
+- [x] 删除 Android 悬浮窗权限、前台服务权限和服务声明
 
 ### 统计
 - [x] 今日统计卡片 — 完成番茄数、总专注时长
-- [ ] 热力图组件 — 月/年切换
+- [x] 热力图组件 — 月/年切换
 - [x] 总专注时长展示
 
 ### 设置
 - [x] 自定义时长 — 专注/短休/长休/长休间隔
-- [x] 悬浮窗开关
 - [x] WebDAV 配置界面
 - [x] 手动同步按钮
+- [x] 完成音效/触感开关
 
 ### 跨平台适配
 - [ ] iOS 后台计时 (BGTaskScheduler)
-- [ ] 桌面端悬浮窗方案 (始终置顶小窗)
+- [ ] 桌面端迷你窗口方案
 - [ ] 各平台通知适配
 
 ### 工程
 - [ ] 应用图标
-- [x] 测试用例 — Widget smoke test + 计时引擎单测
-- [ ] 性能优化 — 减少不必要的 rebuild
+- [x] 测试用例 — Widget smoke test + 计时引擎/控制器单测
+- [x] 性能优化 — 热力图 RepaintBoundary，原生桥接移除后减少平台调用
 
 ## 开发日志
 
-### 2026-05-06
+### 2026-05-06 纯 Dart 收尾
+- 移除 Android Kotlin 源码：删除 `MainActivity.kt`、`TomatoOverlayService.kt`，Manifest 直接使用 Flutter `FlutterActivity`。
+- 移除 Kotlin DSL：`settings.gradle.kts`、`build.gradle.kts`、`app/build.gradle.kts` 改为 Groovy Gradle 文件，删除 Kotlin Android 插件。
+- 移除 Dart `MethodChannel` 桥接与悬浮窗开关，项目主业务代码保持纯 Dart。
+- 新增 `completion_feedback.dart`，计时完成后根据设置播放系统提示音并触发触感反馈。
+- 新增 `heatmap.dart`，支持月/年范围切换的专注热力图。
+- 补充控制器测试，覆盖应用启动时对过期计时器的 Dart 侧结算与完成反馈触发。
+
+### 2026-05-06 主计时闭环
 - 新增纯 Dart `TomatoTimerEngine`，负责计时启动、暂停、重置、跳过、完成后自动进入下一阶段，并在专注完成时写入 `FocusSession`。
-- 新增 `AppController`，用 `ChangeNotifier` 串联本地存储、WebDAV、悬浮窗桥接和计时器 tick。
+- 新增 `AppController`，用 `ChangeNotifier` 串联本地存储、WebDAV 和计时器 tick。
 - 新增 Material 3 主界面，包含模式切换、圆环进度、开始/暂停/重置/跳过、今日统计、最近记录和设置面板。
-- 设置面板支持自定义专注/休息时长、长休间隔、悬浮窗开关、WebDAV 配置保存和手动同步。
+- 设置面板支持自定义专注/休息时长、长休间隔、WebDAV 配置保存和手动同步。
 - 补充 Widget smoke test 与计时引擎单元测试。
 
 ## 技术栈
@@ -85,5 +94,5 @@
 | 框架 | Flutter 3.x, Dart 3.x |
 | 状态管理 | ChangeNotifier (轻量，无额外依赖) |
 | 持久化 | 本地 JSON 文件 + WebDAV 远端同步 |
-| 悬浮窗 (Android) | Foreground Service + SYSTEM_ALERT_WINDOW |
+| 平台入口 | FlutterActivity，无 Kotlin / MethodChannel |
 | UI | Material Design 3 |

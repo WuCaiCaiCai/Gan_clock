@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import 'app_controller.dart';
+import 'heatmap.dart';
 import 'models.dart';
 
 void main() {
@@ -180,6 +181,8 @@ class _TomatoHomePageState extends State<TomatoHomePage> {
                       _TimerActions(controller: controller, phase: timer.phase),
                       const SizedBox(height: 28),
                       _TodayStats(data: data),
+                      const SizedBox(height: 16),
+                      FocusHeatmap(focusSecondsByDay: data.focusSecondsByDay()),
                       const SizedBox(height: 16),
                       _RecentSessions(sessions: data.sessions.take(5).toList()),
                     ],
@@ -610,10 +613,25 @@ class _SettingsSheetState extends State<SettingsSheet> {
           const Divider(height: 28),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
-            secondary: const Icon(Icons.picture_in_picture_alt_outlined),
-            title: const Text('悬浮窗'),
-            value: settings.floatingWindowEnabled,
-            onChanged: controller.setFloatingWindowEnabled,
+            secondary: const Icon(Icons.notifications_active_outlined),
+            title: const Text('完成音效'),
+            value: settings.completionSoundEnabled,
+            onChanged: (value) {
+              controller.updateSettings(
+                settings.copyWith(completionSoundEnabled: value),
+              );
+            },
+          ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            secondary: const Icon(Icons.vibration),
+            title: const Text('完成触感'),
+            value: settings.completionHapticsEnabled,
+            onChanged: (value) {
+              controller.updateSettings(
+                settings.copyWith(completionHapticsEnabled: value),
+              );
+            },
           ),
           const Divider(height: 28),
           Text('WebDAV', style: Theme.of(context).textTheme.titleMedium),

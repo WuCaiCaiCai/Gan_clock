@@ -2,8 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import 'completion_feedback.dart';
 import 'models.dart';
-import 'native_bridge.dart';
 import 'storage.dart';
 import 'timer_engine.dart';
 import 'webdav_service.dart';
@@ -11,17 +11,17 @@ import 'webdav_service.dart';
 class AppController extends ChangeNotifier {
   AppController({
     TomatoStore? storage,
-    NativeBridge? bridge,
     WebDavService? webDavService,
+    CompletionFeedback completionFeedback = const SystemCompletionFeedback(),
     TomatoTimerEngine timerEngine = const TomatoTimerEngine(),
-  }) : _bridge = bridge ?? NativeBridge(),
-       _webDavService = webDavService ?? WebDavService(),
+  }) : _webDavService = webDavService ?? WebDavService(),
+       _completionFeedback = completionFeedback,
        _timerEngine = timerEngine {
-    _storage = storage ?? AppStorage(_bridge);
+    _storage = storage ?? AppStorage();
   }
 
-  final NativeBridge _bridge;
   final WebDavService _webDavService;
+  final CompletionFeedback _completionFeedback;
   final TomatoTimerEngine _timerEngine;
   late final TomatoStore _storage;
 
@@ -61,29 +61,24 @@ class AppController extends ChangeNotifier {
     } finally {
       _loading = false;
       _restartTicker();
-      unawaited(_syncOverlay());
       _notify();
     }
   }
 
   Future<void> start() async {
     await _replaceData(_timerEngine.start(_data));
-    await _syncOverlay();
   }
 
   Future<void> pause() async {
     await _replaceData(_timerEngine.pause(_data));
-    await _syncOverlay();
   }
 
   Future<void> reset() async {
     await _replaceData(_timerEngine.reset(_data));
-    await _syncOverlay();
   }
 
   Future<void> skip() async {
     await _replaceData(_timerEngine.skip(_data));
-    await _syncOverlay();
   }
 
   Future<void> selectMode(TimerMode mode) async {
@@ -91,36 +86,16 @@ class AppController extends ChangeNotifier {
       return;
     }
     await _replaceData(_timerEngine.selectMode(_data, mode));
-    await _syncOverlay();
   }
 
   Future<void> updateSettings(AppSettings settings) async {
     await _replaceData(_timerEngine.applySettings(_data, settings));
-    await _syncOverlay();
   }
 
   Future<void> updateWebDav(WebDavSettings settings) async {
     await updateSettings(_data.settings.copyWith(webDav: settings));
     _message = 'WebDAV 设置已保存';
     _notify();
-  }
-
-  Future<void> setFloatingWindowEnabled(bool enabled) async {
-    if (enabled && !_bridge.supportsFloatingWindow) {
-      _message = '当前平台暂不支持悬浮窗';
-      _notify();
-      return;
-    }
-    if (enabled && !await _bridge.canDrawOverlays()) {
-      await _bridge.openOverlaySettings();
-      _message = '请授权悬浮窗权限后再次开启';
-      _notify();
-      return;
-    }
-
-    await updateSettings(
-      _data.settings.copyWith(floatingWindowEnabled: enabled),
-    );
   }
 
   Future<void> syncNow() async {
@@ -141,7 +116,6 @@ class AppController extends ChangeNotifier {
     } finally {
       _syncing = false;
       _restartTicker();
-      await _syncOverlay();
       _notify();
     }
   }
@@ -156,7 +130,6 @@ class AppController extends ChangeNotifier {
     _restartTicker();
     _notify();
     unawaited(_saveCurrentSilently());
-    unawaited(_syncOverlay());
   }
 
   Future<void> _replaceData(TomatoData next) async {
@@ -182,6 +155,7 @@ class AppController extends ChangeNotifier {
       return;
     }
     _message = mode == TimerMode.focus ? '专注完成，进入休息' : '休息结束，回到专注';
+    unawaited(_completionFeedback.notify(mode, _data.settings));
   }
 
   Future<void> _saveCurrentSilently() async {
@@ -190,18 +164,6 @@ class AppController extends ChangeNotifier {
     } on Object {
       _message = '本地数据保存失败';
       _notify();
-    }
-  }
-
-  Future<void> _syncOverlay() async {
-    try {
-      if (!_data.settings.floatingWindowEnabled || !_data.timer.isActive) {
-        await _bridge.stopOverlay();
-        return;
-      }
-      await _bridge.updateOverlay(_data.timer);
-    } on Object {
-      // 悬浮窗失败不影响主计时器，用户可在设置里重新授权后再开启。
     }
   }
 

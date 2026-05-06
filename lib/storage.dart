@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'models.dart';
-import 'native_bridge.dart';
 
 abstract class TomatoStore {
   Future<TomatoData> load();
@@ -11,9 +10,9 @@ abstract class TomatoStore {
 }
 
 class AppStorage implements TomatoStore {
-  AppStorage(this._bridge);
+  AppStorage({String? dataDirectory}) : _dataDirectory = dataDirectory;
 
-  final NativeBridge _bridge;
+  final String? _dataDirectory;
   File? _dataFile;
 
   @override
@@ -48,12 +47,55 @@ class AppStorage implements TomatoStore {
     if (cached != null) {
       return cached;
     }
-    final directory = Directory(await _bridge.appDataDirectory());
+    final directory = await _resolveDataDirectory();
     await directory.create(recursive: true);
     final file = File(
       '${directory.path}${Platform.pathSeparator}tomato_data.json',
     );
     _dataFile = file;
     return file;
+  }
+
+  Future<Directory> _resolveDataDirectory() async {
+    final configured = _dataDirectory;
+    if (configured != null && configured.trim().isNotEmpty) {
+      return Directory(configured);
+    }
+
+    final home =
+        Platform.environment['TOMATO_CLOCK_HOME'] ??
+        Platform.environment['HOME'] ??
+        Platform.environment['USERPROFILE'];
+    final candidates = <Directory>[
+      if (home != null && home.trim().isNotEmpty)
+        Directory('${home.trim()}${Platform.pathSeparator}.tomato_clock'),
+      Directory(
+        '${Directory.systemTemp.path}${Platform.pathSeparator}tomato_clock',
+      ),
+      Directory(
+        '${Directory.current.path}${Platform.pathSeparator}.tomato_clock',
+      ),
+    ];
+
+    for (final directory in candidates) {
+      if (await _canUseDirectory(directory)) {
+        return directory;
+      }
+    }
+    return Directory.systemTemp.createTemp('tomato_clock_');
+  }
+
+  Future<bool> _canUseDirectory(Directory directory) async {
+    try {
+      await directory.create(recursive: true);
+      final probe = File(
+        '${directory.path}${Platform.pathSeparator}.write_test',
+      );
+      await probe.writeAsString('ok', flush: true);
+      await probe.delete();
+      return true;
+    } on Object {
+      return false;
+    }
   }
 }

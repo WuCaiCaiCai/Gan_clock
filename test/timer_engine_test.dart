@@ -53,4 +53,16 @@ void main() {
     expect(resumed.timer.remainingSeconds, 1200);
     expect(resumed.timer.endsAt, start.add(const Duration(minutes: 30)));
   });
+
+  test('settings serialize completion feedback switches', () {
+    final settings = const AppSettings(
+      completionSoundEnabled: false,
+      completionHapticsEnabled: false,
+    );
+
+    final decoded = AppSettings.fromJson(settings.toJson());
+
+    expect(decoded.completionSoundEnabled, isFalse);
+    expect(decoded.completionHapticsEnabled, isFalse);
+  });
 }

@@ -108,7 +108,8 @@ class AppSettings {
     this.shortBreakMinutes = 5,
     this.longBreakMinutes = 15,
     this.roundsBeforeLongBreak = 4,
-    this.floatingWindowEnabled = false,
+    this.completionSoundEnabled = true,
+    this.completionHapticsEnabled = true,
     this.webDav = const WebDavSettings(),
   });
 
@@ -116,7 +117,8 @@ class AppSettings {
   final int shortBreakMinutes;
   final int longBreakMinutes;
   final int roundsBeforeLongBreak;
-  final bool floatingWindowEnabled;
+  final bool completionSoundEnabled;
+  final bool completionHapticsEnabled;
   final WebDavSettings webDav;
 
   AppSettings copyWith({
@@ -124,7 +126,8 @@ class AppSettings {
     int? shortBreakMinutes,
     int? longBreakMinutes,
     int? roundsBeforeLongBreak,
-    bool? floatingWindowEnabled,
+    bool? completionSoundEnabled,
+    bool? completionHapticsEnabled,
     WebDavSettings? webDav,
   }) {
     return AppSettings(
@@ -133,8 +136,10 @@ class AppSettings {
       longBreakMinutes: longBreakMinutes ?? this.longBreakMinutes,
       roundsBeforeLongBreak:
           roundsBeforeLongBreak ?? this.roundsBeforeLongBreak,
-      floatingWindowEnabled:
-          floatingWindowEnabled ?? this.floatingWindowEnabled,
+      completionSoundEnabled:
+          completionSoundEnabled ?? this.completionSoundEnabled,
+      completionHapticsEnabled:
+          completionHapticsEnabled ?? this.completionHapticsEnabled,
       webDav: webDav ?? this.webDav,
     );
   }
@@ -145,7 +150,8 @@ class AppSettings {
       'shortBreakMinutes': shortBreakMinutes,
       'longBreakMinutes': longBreakMinutes,
       'roundsBeforeLongBreak': roundsBeforeLongBreak,
-      'floatingWindowEnabled': floatingWindowEnabled,
+      'completionSoundEnabled': completionSoundEnabled,
+      'completionHapticsEnabled': completionHapticsEnabled,
       'webDav': webDav.toJson(),
     };
   }
@@ -164,7 +170,9 @@ class AppSettings {
         12,
         4,
       ),
-      floatingWindowEnabled: value['floatingWindowEnabled'] as bool? ?? false,
+      completionSoundEnabled: value['completionSoundEnabled'] as bool? ?? true,
+      completionHapticsEnabled:
+          value['completionHapticsEnabled'] as bool? ?? true,
       webDav: WebDavSettings.fromJson(value['webDav']),
     );
   }
