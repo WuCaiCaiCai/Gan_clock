@@ -2,10 +2,12 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'app_controller.dart';
 import 'heatmap.dart';
 import 'models.dart';
+import 'platform_controls.dart';
 
 void main() {
   runApp(const TomatoApp());
@@ -29,11 +31,20 @@ class _TomatoAppState extends State<TomatoApp> {
     super.initState();
     _ownsController = widget.controller == null;
     _controller = widget.controller ?? AppController();
+    unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge));
+    SystemChrome.setSystemUIOverlayStyle(
+      const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        systemNavigationBarColor: Colors.transparent,
+        systemNavigationBarDividerColor: Colors.transparent,
+      ),
+    );
     unawaited(_controller.load());
   }
 
   @override
   void dispose() {
+    unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge));
     if (_ownsController) {
       _controller.dispose();
     }
@@ -124,11 +135,19 @@ class TomatoHomePage extends StatefulWidget {
   State<TomatoHomePage> createState() => _TomatoHomePageState();
 }
 
-class _TomatoHomePageState extends State<TomatoHomePage> {
+class _TomatoHomePageState extends State<TomatoHomePage>
+    with WidgetsBindingObserver {
   AppController? _controller;
   Timer? _idleChromeTimer;
   int _selectedIndex = 0;
   bool _chromeHidden = false;
+  bool _ignoreNextQuietTap = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
 
   @override
   void didChangeDependencies() {
@@ -141,18 +160,33 @@ class _TomatoHomePageState extends State<TomatoHomePage> {
     _controller = next;
     _controller?.addListener(_handleControllerChanged);
     _syncIdleChrome();
+    _syncPlatformControls();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _controller?.removeListener(_handleControllerChanged);
     _idleChromeTimer?.cancel();
+    unawaited(PlatformControls.setKeepScreenOn(false));
+    unawaited(
+      PlatformControls.setPipState(enabled: false, title: '', subtitle: ''),
+    );
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused) {
+      _requestQuiet();
+    }
   }
 
   void _handleControllerChanged() {
     _showControllerMessage();
     _syncIdleChrome();
+    _syncPlatformControls();
   }
 
   void _showControllerMessage() {
@@ -174,68 +208,130 @@ class _TomatoHomePageState extends State<TomatoHomePage> {
   Widget build(BuildContext context) {
     final controller = AppScope.watch(context);
     final data = controller.data;
+    final timer = data.timer;
     final hideChrome =
         _chromeHidden &&
         _selectedIndex == 0 &&
-        data.timer.phase == TimerPhase.running;
+        timer.phase == TimerPhase.running;
 
     return Listener(
       behavior: HitTestBehavior.translucent,
       onPointerDown: (_) => _handleUserActivity(),
       onPointerMove: (_) => _handleUserActivity(),
       onPointerSignal: (_) => _handleUserActivity(),
-      child: Scaffold(
-        appBar: hideChrome ? null : AppBar(title: Text(_pageTitle)),
-        body: SafeArea(
-          child: controller.loading
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 520),
+        curve: Curves.easeOutCubic,
+        color: _modeBackgroundColor(context, timer.mode),
+        child: Scaffold(
+          backgroundColor: Colors.transparent,
+          extendBody: true,
+          body: controller.loading
               ? const Center(child: CircularProgressIndicator())
-              : IndexedStack(
-                  index: _selectedIndex,
+              : Stack(
                   children: [
-                    _TimerPage(
-                      controller: controller,
-                      data: data,
-                      quiet: hideChrome,
+                    Positioned.fill(
+                      child: SafeArea(
+                        bottom: false,
+                        child: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 260),
+                          switchInCurve: Curves.easeOutCubic,
+                          switchOutCurve: Curves.easeInCubic,
+                          transitionBuilder: (child, animation) {
+                            final position = Tween<Offset>(
+                              begin: const Offset(0.03, 0),
+                              end: Offset.zero,
+                            ).animate(animation);
+                            return FadeTransition(
+                              opacity: animation,
+                              child: SlideTransition(
+                                position: position,
+                                child: child,
+                              ),
+                            );
+                          },
+                          child: KeyedSubtree(
+                            key: ValueKey(_selectedIndex),
+                            child: _pageFor(
+                              controller: controller,
+                              data: data,
+                              quiet: hideChrome,
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
-                    _StatsPage(data: data),
-                    _SettingsPage(
-                      controller: controller,
-                      settings: data.settings,
+                    _FloatingDock(
+                      hidden: hideChrome,
+                      selectedIndex: _selectedIndex,
+                      onSelected: _selectPage,
                     ),
                   ],
                 ),
         ),
-        bottomNavigationBar: hideChrome
-            ? null
-            : NavigationBar(
-                selectedIndex: _selectedIndex,
-                onDestinationSelected: (index) {
-                  setState(() {
-                    _selectedIndex = index;
-                    _chromeHidden = false;
-                  });
-                  _syncIdleChrome();
-                },
-                destinations: const [
-                  NavigationDestination(
-                    icon: Icon(Icons.timer_outlined),
-                    selectedIcon: Icon(Icons.timer),
-                    label: '番茄钟',
-                  ),
-                  NavigationDestination(
-                    icon: Icon(Icons.bar_chart_outlined),
-                    selectedIcon: Icon(Icons.bar_chart),
-                    label: '统计',
-                  ),
-                  NavigationDestination(
-                    icon: Icon(Icons.settings_outlined),
-                    selectedIcon: Icon(Icons.settings),
-                    label: '设置',
-                  ),
-                ],
-              ),
       ),
     );
+  }
+
+  Widget _pageFor({
+    required AppController controller,
+    required TomatoData data,
+    required bool quiet,
+  }) {
+    switch (_selectedIndex) {
+      case 0:
+        return _TimerPage(
+          controller: controller,
+          data: data,
+          quiet: quiet,
+          onRequestQuiet: _requestQuiet,
+          onEnterPictureInPicture: _enterPictureInPicture,
+        );
+      case 1:
+        return _StatsPage(data: data);
+      case 2:
+        return _SettingsPage(controller: controller, settings: data.settings);
+      default:
+        return _TimerPage(
+          controller: controller,
+          data: data,
+          quiet: quiet,
+          onRequestQuiet: _requestQuiet,
+          onEnterPictureInPicture: _enterPictureInPicture,
+        );
+    }
+  }
+
+  void _selectPage(int index) {
+    setState(() {
+      _selectedIndex = index;
+      _chromeHidden = false;
+    });
+    _syncIdleChrome();
+  }
+
+  void _requestQuiet() {
+    if (_ignoreNextQuietTap) {
+      _ignoreNextQuietTap = false;
+      return;
+    }
+    final controller = _controller;
+    if (controller == null ||
+        _selectedIndex != 0 ||
+        controller.data.timer.phase != TimerPhase.running ||
+        _chromeHidden) {
+      return;
+    }
+    _idleChromeTimer?.cancel();
+    _idleChromeTimer = null;
+    setState(() {
+      _chromeHidden = true;
+    });
+  }
+
+  void _enterPictureInPicture() {
+    _requestQuiet();
+    unawaited(PlatformControls.enterPictureInPicture());
   }
 
   void _handleUserActivity() {
@@ -243,6 +339,7 @@ class _TomatoHomePageState extends State<TomatoHomePage> {
       setState(() {
         _chromeHidden = false;
       });
+      _ignoreNextQuietTap = true;
     }
     _syncIdleChrome(restart: true);
   }
@@ -291,17 +388,24 @@ class _TomatoHomePageState extends State<TomatoHomePage> {
     });
   }
 
-  String get _pageTitle {
-    switch (_selectedIndex) {
-      case 0:
-        return '番茄钟';
-      case 1:
-        return '统计';
-      case 2:
-        return '设置';
-      default:
-        return 'TomatoClock';
+  void _syncPlatformControls() {
+    final controller = _controller;
+    if (controller == null) {
+      return;
     }
+    final timer = controller.data.timer;
+    unawaited(
+      PlatformControls.setKeepScreenOn(
+        controller.data.settings.keepScreenOnEnabled,
+      ),
+    );
+    unawaited(
+      PlatformControls.setPipState(
+        enabled: timer.phase == TimerPhase.running,
+        title: formatClock(timer.remainingSeconds),
+        subtitle: timer.mode.label,
+      ),
+    );
   }
 }
 
@@ -310,43 +414,193 @@ class _TimerPage extends StatelessWidget {
     required this.controller,
     required this.data,
     required this.quiet,
+    required this.onRequestQuiet,
+    required this.onEnterPictureInPicture,
   });
 
   final AppController controller;
   final TomatoData data;
   final bool quiet;
+  final VoidCallback onRequestQuiet;
+  final VoidCallback onEnterPictureInPicture;
 
   @override
   Widget build(BuildContext context) {
     final timer = data.timer;
-    if (quiet) {
-      return Center(
-        child: TimerProgressRing(
-          snapshot: timer,
-          color: _modeColor(timer.mode),
-        ),
-      );
-    }
-
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 560),
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 24, 20, 120),
-          children: [
-            _ModeSelector(
-              selected: timer.mode,
-              enabled: timer.phase != TimerPhase.running,
-              onChanged: controller.selectMode,
+    final settings = data.settings;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onRequestQuiet,
+      child: Stack(
+        children: [
+          Center(
+            child: TimerProgressRing(
+              snapshot: timer,
+              color: _modeColor(timer.mode),
             ),
-            const SizedBox(height: 34),
-            TimerProgressRing(snapshot: timer, color: _modeColor(timer.mode)),
-            const SizedBox(height: 18),
-            _HitokotoLine(mode: timer.mode),
-            const SizedBox(height: 24),
-            _TimerActions(controller: controller, phase: timer.phase),
-          ],
+          ),
+          Center(
+            child: Transform.translate(
+              offset: const Offset(0, 178),
+              child: _ChromeFade(
+                hidden: quiet,
+                child: _HitokotoLine(mode: timer.mode),
+              ),
+            ),
+          ),
+          Positioned(
+            left: 20,
+            right: 20,
+            bottom: 116 + MediaQuery.paddingOf(context).bottom,
+            child: _ChromeFade(
+              hidden: quiet,
+              slideOffset: const Offset(0, 0.14),
+              child: _TimerActions(
+                controller: controller,
+                phase: timer.phase,
+                keepScreenOn: settings.keepScreenOnEnabled,
+                onToggleKeepScreenOn: () {
+                  controller.updateSettings(
+                    settings.copyWith(
+                      keepScreenOnEnabled: !settings.keepScreenOnEnabled,
+                    ),
+                  );
+                },
+                onEnterPictureInPicture: onEnterPictureInPicture,
+              ),
+            ),
+          ),
+          Positioned(
+            left: 20,
+            right: 20,
+            top: 16,
+            child: _ChromeFade(
+              hidden: quiet,
+              slideOffset: const Offset(0, -0.08),
+              child: Center(
+                child: _PhasePill(mode: timer.mode, phase: timer.phase),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FloatingDock extends StatelessWidget {
+  const _FloatingDock({
+    required this.hidden,
+    required this.selectedIndex,
+    required this.onSelected,
+  });
+
+  final bool hidden;
+  final int selectedIndex;
+  final ValueChanged<int> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      left: 18,
+      right: 18,
+      bottom: 20 + MediaQuery.paddingOf(context).bottom,
+      child: _ChromeFade(
+        hidden: hidden,
+        slideOffset: const Offset(0, 0.18),
+        child: Material(
+          elevation: 10,
+          shadowColor: Colors.black.withAlpha(36),
+          color: Theme.of(context).colorScheme.surface.withAlpha(238),
+          borderRadius: BorderRadius.circular(28),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(28),
+            child: NavigationBar(
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              height: 64,
+              selectedIndex: selectedIndex,
+              onDestinationSelected: onSelected,
+              destinations: const [
+                NavigationDestination(
+                  icon: Icon(Icons.timer_outlined),
+                  selectedIcon: Icon(Icons.timer),
+                  label: '番茄钟',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.bar_chart_outlined),
+                  selectedIcon: Icon(Icons.bar_chart),
+                  label: '统计',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.settings_outlined),
+                  selectedIcon: Icon(Icons.settings),
+                  label: '设置',
+                ),
+              ],
+            ),
+          ),
         ),
+      ),
+    );
+  }
+}
+
+class _ChromeFade extends StatelessWidget {
+  const _ChromeFade({
+    required this.hidden,
+    required this.child,
+    this.slideOffset = Offset.zero,
+  });
+
+  final bool hidden;
+  final Widget child;
+  final Offset slideOffset;
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      ignoring: hidden,
+      child: AnimatedOpacity(
+        opacity: hidden ? 0 : 1,
+        duration: const Duration(milliseconds: 260),
+        curve: Curves.easeOutCubic,
+        child: AnimatedSlide(
+          offset: hidden ? slideOffset : Offset.zero,
+          duration: const Duration(milliseconds: 260),
+          curve: Curves.easeOutCubic,
+          child: child,
+        ),
+      ),
+    );
+  }
+}
+
+class _PhasePill extends StatelessWidget {
+  const _PhasePill({required this.mode, required this.phase});
+
+  final TimerMode mode;
+  final TimerPhase phase;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOutCubic,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: BoxDecoration(
+        color: scheme.surface.withAlpha(220),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: _modeColor(mode).withAlpha(90)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(_modeIcon(mode), size: 18, color: _modeColor(mode)),
+          const SizedBox(width: 8),
+          Text('${mode.label} · ${_phaseLabel(phase)}'),
+        ],
       ),
     );
   }
@@ -363,7 +617,7 @@ class _StatsPage extends StatelessWidget {
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 720),
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+          padding: const EdgeInsets.fromLTRB(20, 24, 20, 112),
           children: [
             _TodayStats(data: data),
             const SizedBox(height: 16),
@@ -394,7 +648,7 @@ class _SettingsPage extends StatelessWidget {
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 720),
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+          padding: const EdgeInsets.fromLTRB(20, 24, 20, 112),
           children: [
             Card(
               child: Column(
@@ -483,42 +737,6 @@ class _SettingsPage extends StatelessWidget {
       showDragHandle: true,
       isScrollControlled: true,
       builder: (_) => const _WebDavSettingsSheet(),
-    );
-  }
-}
-
-class _ModeSelector extends StatelessWidget {
-  const _ModeSelector({
-    required this.selected,
-    required this.enabled,
-    required this.onChanged,
-  });
-
-  final TimerMode selected;
-  final bool enabled;
-  final ValueChanged<TimerMode> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: SegmentedButton<TimerMode>(
-        showSelectedIcon: false,
-        segments: TimerMode.values
-            .map(
-              (mode) => ButtonSegment<TimerMode>(
-                value: mode,
-                icon: Icon(_modeIcon(mode)),
-                label: Text(mode.label),
-              ),
-            )
-            .toList(),
-        selected: {selected},
-        onSelectionChanged: enabled
-            ? (values) {
-                onChanged(values.single);
-              }
-            : null,
-      ),
     );
   }
 }
@@ -800,36 +1018,89 @@ class _RingPainter extends CustomPainter {
 }
 
 class _TimerActions extends StatelessWidget {
-  const _TimerActions({required this.controller, required this.phase});
+  const _TimerActions({
+    required this.controller,
+    required this.phase,
+    required this.keepScreenOn,
+    required this.onToggleKeepScreenOn,
+    required this.onEnterPictureInPicture,
+  });
 
   final AppController controller;
   final TimerPhase phase;
+  final bool keepScreenOn;
+  final VoidCallback onToggleKeepScreenOn;
+  final VoidCallback onEnterPictureInPicture;
 
   @override
   Widget build(BuildContext context) {
     final running = phase == TimerPhase.running;
     final canStop = phase != TimerPhase.idle;
-    return Wrap(
-      alignment: WrapAlignment.center,
-      spacing: 12,
-      runSpacing: 12,
-      children: [
-        FilledButton.icon(
-          onPressed: running ? controller.pause : controller.start,
-          icon: Icon(running ? Icons.pause : Icons.play_arrow),
-          label: Text(running ? '暂停' : '开始'),
+    final scheme = Theme.of(context).colorScheme;
+    return Center(
+      child: Material(
+        elevation: 10,
+        shadowColor: Colors.black.withAlpha(34),
+        color: scheme.surface.withAlpha(236),
+        borderRadius: BorderRadius.circular(28),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          child: Wrap(
+            alignment: WrapAlignment.center,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              FilledButton.icon(
+                onPressed: running
+                    ? controller.pause
+                    : () {
+                        unawaited(HapticFeedback.mediumImpact());
+                        controller.start();
+                      },
+                icon: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 180),
+                  child: Icon(
+                    running ? Icons.pause : Icons.play_arrow,
+                    key: ValueKey(running),
+                  ),
+                ),
+                label: Text(running ? '暂停' : '开始'),
+              ),
+              OutlinedButton.icon(
+                onPressed: canStop
+                    ? () {
+                        unawaited(HapticFeedback.heavyImpact());
+                        controller.stop();
+                      }
+                    : null,
+                icon: const Icon(Icons.stop_circle_outlined),
+                label: const Text('停止'),
+              ),
+              IconButton.filledTonal(
+                tooltip: keepScreenOn ? '关闭屏幕常亮' : '开启屏幕常亮',
+                isSelected: keepScreenOn,
+                onPressed: onToggleKeepScreenOn,
+                icon: Icon(
+                  keepScreenOn ? Icons.lightbulb : Icons.lightbulb_outline,
+                ),
+              ),
+              IconButton.filledTonal(
+                tooltip: '进入画中画',
+                onPressed: phase == TimerPhase.running
+                    ? onEnterPictureInPicture
+                    : null,
+                icon: const Icon(Icons.picture_in_picture_alt_outlined),
+              ),
+              IconButton.filledTonal(
+                tooltip: '跳过当前阶段',
+                onPressed: controller.skip,
+                icon: const Icon(Icons.skip_next),
+              ),
+            ],
+          ),
         ),
-        OutlinedButton.icon(
-          onPressed: canStop ? controller.stop : null,
-          icon: const Icon(Icons.stop_circle_outlined),
-          label: const Text('停止'),
-        ),
-        OutlinedButton.icon(
-          onPressed: controller.skip,
-          icon: const Icon(Icons.skip_next),
-          label: const Text('跳过'),
-        ),
-      ],
+      ),
     );
   }
 }
@@ -842,10 +1113,13 @@ class _TodayStats extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final today = dateKey(DateTime.now());
-    final todaySessions = data.sessions
+    final todayFocusSessions = data.sessions
         .where((session) => session.isRecordable && session.dayKey == today)
         .toList();
-    final todaySeconds = todaySessions.fold<int>(
+    final todayCompletedSessions = todayFocusSessions
+        .where((session) => session.isCompletedPomodoro)
+        .toList();
+    final todaySeconds = todayFocusSessions.fold<int>(
       0,
       (total, session) => total + session.focusedSeconds,
     );
@@ -857,7 +1131,7 @@ class _TodayStats extends StatelessWidget {
           _StatCard(
             icon: Icons.check_circle_outline,
             label: '今日番茄',
-            value: '${todaySessions.length}',
+            value: '${todayCompletedSessions.length}',
             detail: '已完成',
           ),
           _StatCard(
@@ -971,7 +1245,9 @@ class _RecentSessions extends StatelessWidget {
               contentPadding: EdgeInsets.zero,
               leading: const Icon(Icons.local_fire_department_outlined),
               title: Text(formatDateTime(session.endedAt)),
-              subtitle: Text(formatHours(session.focusedSeconds)),
+              subtitle: Text(
+                '${formatHours(session.focusedSeconds)} · ${session.completed ? '完成' : '已停止'}',
+              ),
               trailing: const Icon(Icons.chevron_right),
             ),
       ],
@@ -1399,6 +1675,16 @@ Color _modeColor(TimerMode mode) {
     case TimerMode.longBreak:
       return const Color(0xFF3B6E8F);
   }
+}
+
+Color _modeBackgroundColor(BuildContext context, TimerMode mode) {
+  final scheme = Theme.of(context).colorScheme;
+  final accent = _modeColor(mode);
+  final base = scheme.brightness == Brightness.dark
+      ? scheme.surface
+      : scheme.surfaceContainerLowest;
+  final amount = scheme.brightness == Brightness.dark ? 0.22 : 0.12;
+  return Color.lerp(base, accent, amount)!;
 }
 
 IconData _themeModeIcon(AppThemeMode mode) {

@@ -12,10 +12,12 @@ void main() {
     expect(settings.completionHapticsEnabled, isTrue);
     expect(settings.idleFocusSeconds, 30);
     expect(settings.themeMode, AppThemeMode.system);
+    expect(settings.keepScreenOnEnabled, isFalse);
     expect(AppSettings.fromJson(const {}).completionSoundEnabled, isFalse);
     expect(AppSettings.fromJson(const {}).completionHapticsEnabled, isTrue);
     expect(AppSettings.fromJson(const {}).idleFocusSeconds, 30);
     expect(AppSettings.fromJson(const {}).themeMode, AppThemeMode.system);
+    expect(AppSettings.fromJson(const {}).keepScreenOnEnabled, isFalse);
     expect(
       AppSettings.fromJson(const {'darkModeEnabled': true}).themeMode,
       AppThemeMode.dark,
@@ -71,20 +73,39 @@ void main() {
     expect(resumed.timer.endsAt, start.add(const Duration(minutes: 30)));
   });
 
-  test('stop cancels current timer without recording a session', () {
+  test(
+    'stop records focused time after one minute without completing tomato',
+    () {
+      final start = DateTime(2026, 1, 1, 9);
+      final running = engine.start(TomatoData.initial(), at: start);
+
+      final stopped = engine.stop(
+        running,
+        at: start.add(const Duration(minutes: 5)),
+      );
+
+      expect(stopped.timer.phase, TimerPhase.idle);
+      expect(stopped.timer.remainingSeconds, 1500);
+      expect(stopped.timer.startedAt, isNull);
+      expect(stopped.timer.endsAt, isNull);
+      expect(stopped.sessions, hasLength(1));
+      expect(stopped.sessions.single.focusedSeconds, 300);
+      expect(stopped.sessions.single.completed, isFalse);
+      expect(stopped.totalFocusSeconds, 300);
+    },
+  );
+
+  test('stop under one minute does not record focused time', () {
     final start = DateTime(2026, 1, 1, 9);
     final running = engine.start(TomatoData.initial(), at: start);
 
     final stopped = engine.stop(
       running,
-      at: start.add(const Duration(minutes: 5)),
+      at: start.add(const Duration(seconds: 30)),
     );
 
-    expect(stopped.timer.phase, TimerPhase.idle);
-    expect(stopped.timer.remainingSeconds, 1500);
-    expect(stopped.timer.startedAt, isNull);
-    expect(stopped.timer.endsAt, isNull);
     expect(stopped.sessions, isEmpty);
+    expect(stopped.totalFocusSeconds, 0);
   });
 
   test('completed focus shorter than one minute is not recorded', () {
@@ -130,7 +151,7 @@ void main() {
           endedAt: now.add(const Duration(minutes: 1)),
           plannedSeconds: 60,
           focusedSeconds: 60,
-          completed: true,
+          completed: false,
         ),
       ],
     );
@@ -143,6 +164,7 @@ void main() {
     final settings = const AppSettings(
       idleFocusSeconds: 75,
       themeMode: AppThemeMode.dark,
+      keepScreenOnEnabled: true,
       completionSoundEnabled: false,
       completionHapticsEnabled: false,
     );
@@ -151,6 +173,7 @@ void main() {
 
     expect(decoded.idleFocusSeconds, 75);
     expect(decoded.themeMode, AppThemeMode.dark);
+    expect(decoded.keepScreenOnEnabled, isTrue);
     expect(decoded.completionSoundEnabled, isFalse);
     expect(decoded.completionHapticsEnabled, isFalse);
   });

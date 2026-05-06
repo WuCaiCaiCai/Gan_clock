@@ -137,6 +137,7 @@ class AppSettings {
     this.roundsBeforeLongBreak = 4,
     this.idleFocusSeconds = 30,
     this.themeMode = AppThemeMode.system,
+    this.keepScreenOnEnabled = false,
     this.completionSoundEnabled = false,
     this.completionHapticsEnabled = true,
     this.webDav = const WebDavSettings(),
@@ -148,6 +149,7 @@ class AppSettings {
   final int roundsBeforeLongBreak;
   final int idleFocusSeconds;
   final AppThemeMode themeMode;
+  final bool keepScreenOnEnabled;
   final bool completionSoundEnabled;
   final bool completionHapticsEnabled;
   final WebDavSettings webDav;
@@ -159,6 +161,7 @@ class AppSettings {
     int? roundsBeforeLongBreak,
     int? idleFocusSeconds,
     AppThemeMode? themeMode,
+    bool? keepScreenOnEnabled,
     bool? completionSoundEnabled,
     bool? completionHapticsEnabled,
     WebDavSettings? webDav,
@@ -171,6 +174,7 @@ class AppSettings {
           roundsBeforeLongBreak ?? this.roundsBeforeLongBreak,
       idleFocusSeconds: idleFocusSeconds ?? this.idleFocusSeconds,
       themeMode: themeMode ?? this.themeMode,
+      keepScreenOnEnabled: keepScreenOnEnabled ?? this.keepScreenOnEnabled,
       completionSoundEnabled:
           completionSoundEnabled ?? this.completionSoundEnabled,
       completionHapticsEnabled:
@@ -187,6 +191,7 @@ class AppSettings {
       'roundsBeforeLongBreak': roundsBeforeLongBreak,
       'idleFocusSeconds': idleFocusSeconds,
       'themeMode': themeMode.name,
+      'keepScreenOnEnabled': keepScreenOnEnabled,
       'completionSoundEnabled': completionSoundEnabled,
       'completionHapticsEnabled': completionHapticsEnabled,
       'webDav': webDav.toJson(),
@@ -212,6 +217,7 @@ class AppSettings {
         value['themeMode'],
         legacyDarkMode: value['darkModeEnabled'] as bool?,
       ),
+      keepScreenOnEnabled: value['keepScreenOnEnabled'] as bool? ?? false,
       completionSoundEnabled: value['completionSoundEnabled'] as bool? ?? false,
       completionHapticsEnabled:
           value['completionHapticsEnabled'] as bool? ?? true,
@@ -241,8 +247,9 @@ class FocusSession {
 
   String get dayKey => dateKey(endedAt);
 
-  bool get isRecordable =>
-      completed && focusedSeconds >= minimumRecordedSeconds;
+  bool get isRecordable => focusedSeconds >= minimumRecordedSeconds;
+
+  bool get isCompletedPomodoro => completed && isRecordable;
 
   Map<String, Object?> toJson() {
     return {

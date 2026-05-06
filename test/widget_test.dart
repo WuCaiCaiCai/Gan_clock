@@ -28,6 +28,15 @@ Future<void> usePhoneSurface(WidgetTester tester) async {
   });
 }
 
+bool hasIgnoringAncestor(WidgetTester tester, Finder finder) {
+  return find
+      .ancestor(of: finder, matching: find.byType(IgnorePointer))
+      .evaluate()
+      .map((element) => element.widget)
+      .whereType<IgnorePointer>()
+      .any((widget) => widget.ignoring);
+}
+
 void main() {
   const focusHitokotoLines = [
     '只处理眼前这一件事。',
@@ -128,18 +137,24 @@ void main() {
     expect(find.text('停止'), findsOneWidget);
     expect(find.text('统计'), findsOneWidget);
 
+    await tester.tapAt(const Offset(24, 240));
+    await tester.pumpAndSettle();
+
+    expect(hasIgnoringAncestor(tester, find.text('停止')), isTrue);
+    expect(hasIgnoringAncestor(tester, find.text('统计')), isTrue);
+
     await tester.pump(const Duration(seconds: 5));
     await tester.pump();
 
     expect(find.byType(TimerProgressRing), findsOneWidget);
-    expect(find.text('停止'), findsNothing);
-    expect(find.text('统计'), findsNothing);
+    expect(hasIgnoringAncestor(tester, find.text('停止')), isTrue);
+    expect(hasIgnoringAncestor(tester, find.text('统计')), isTrue);
 
     await tester.tap(find.byType(TimerProgressRing));
     await tester.pump();
 
-    expect(find.text('停止'), findsOneWidget);
-    expect(find.text('统计'), findsOneWidget);
+    expect(hasIgnoringAncestor(tester, find.text('停止')), isFalse);
+    expect(hasIgnoringAncestor(tester, find.text('统计')), isFalse);
 
     controller.dispose();
   });
