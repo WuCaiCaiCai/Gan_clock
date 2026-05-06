@@ -159,6 +159,39 @@ void main() {
     controller.dispose();
   });
 
+  testWidgets('pip timer uses square numeric mask', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Center(
+          child: SizedBox(
+            width: 240,
+            height: 180,
+            child: PipTimerBox(
+              snapshot: const TimerSnapshot(
+                mode: TimerMode.focus,
+                phase: TimerPhase.running,
+                totalSeconds: 1500,
+                remainingSeconds: 1470,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('24:30'), findsOneWidget);
+    expect(find.byIcon(Icons.lightbulb_outline), findsNothing);
+    expect(find.byIcon(Icons.lightbulb), findsNothing);
+
+    final surfaceSize = tester.getSize(
+      find.byKey(const ValueKey('pip_timer_box_surface')),
+    );
+    expect(surfaceSize.width, closeTo(surfaceSize.height, 0.1));
+  });
+
   testWidgets('heatmap selects a day and shows its focus duration', (
     WidgetTester tester,
   ) async {

@@ -240,8 +240,7 @@ class _TomatoHomePageState extends State<TomatoHomePage>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.paused) {
-      _requestQuiet();
-      unawaited(PlatformControls.enterPictureInPicture());
+      _prepareForPictureInPicture();
     } else if (state == AppLifecycleState.resumed && _inPictureInPicture) {
       setState(() {
         _inPictureInPicture = false;
@@ -300,44 +299,63 @@ class _TomatoHomePageState extends State<TomatoHomePage>
               : Stack(
                   children: [
                     Positioned.fill(
-                      child: SafeArea(
-                        bottom: false,
-                        child: AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 260),
-                          switchInCurve: Curves.easeOutCubic,
-                          switchOutCurve: Curves.easeInCubic,
-                          transitionBuilder: (child, animation) {
-                            final position = Tween<Offset>(
-                              begin: const Offset(0.03, 0),
-                              end: Offset.zero,
-                            ).animate(animation);
-                            return FadeTransition(
-                              opacity: animation,
-                              child: SlideTransition(
-                                position: position,
-                                child: child,
-                              ),
-                            );
-                          },
-                          child: KeyedSubtree(
-                            key: ValueKey(_selectedIndex),
-                            child: _pageFor(
+                      child: _inPictureInPicture
+                          ? _pageTransition(
                               controller: controller,
                               data: data,
                               quiet: hideChrome,
-                              inPictureInPicture: _inPictureInPicture,
+                              inPictureInPicture: true,
+                            )
+                          : SafeArea(
+                              bottom: false,
+                              child: _pageTransition(
+                                controller: controller,
+                                data: data,
+                                quiet: hideChrome,
+                                inPictureInPicture: false,
+                              ),
                             ),
-                          ),
-                        ),
+                    ),
+                    if (!_inPictureInPicture)
+                      _FloatingDock(
+                        hidden: hideChrome,
+                        selectedIndex: _selectedIndex,
+                        onSelected: _selectPage,
                       ),
-                    ),
-                    _FloatingDock(
-                      hidden: hideChrome,
-                      selectedIndex: _selectedIndex,
-                      onSelected: _selectPage,
-                    ),
                   ],
                 ),
+        ),
+      ),
+    );
+  }
+
+  Widget _pageTransition({
+    required AppController controller,
+    required TomatoData data,
+    required bool quiet,
+    required bool inPictureInPicture,
+  }) {
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 260),
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeInCubic,
+      transitionBuilder: (child, animation) {
+        final position = Tween<Offset>(
+          begin: const Offset(0.03, 0),
+          end: Offset.zero,
+        ).animate(animation);
+        return FadeTransition(
+          opacity: animation,
+          child: SlideTransition(position: position, child: child),
+        );
+      },
+      child: KeyedSubtree(
+        key: ValueKey('$_selectedIndex-$inPictureInPicture'),
+        child: _pageFor(
+          controller: controller,
+          data: data,
+          quiet: quiet,
+          inPictureInPicture: inPictureInPicture,
         ),
       ),
     );
@@ -403,8 +421,26 @@ class _TomatoHomePageState extends State<TomatoHomePage>
   }
 
   void _enterPictureInPicture() {
-    _requestQuiet();
+    _prepareForPictureInPicture();
     unawaited(PlatformControls.enterPictureInPicture());
+  }
+
+  void _prepareForPictureInPicture() {
+    final controller = _controller;
+    if (controller == null ||
+        controller.data.timer.phase != TimerPhase.running ||
+        !mounted) {
+      return;
+    }
+    _idleChromeTimer?.cancel();
+    _idleChromeTimer = null;
+    if (_selectedIndex == 0 && _chromeHidden) {
+      return;
+    }
+    setState(() {
+      _selectedIndex = 0;
+      _chromeHidden = true;
+    });
   }
 
   void _handleUserActivity() {
@@ -543,23 +579,11 @@ class _TimerPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final timer = data.timer;
-    final settings = data.settings;
     if (inPictureInPicture) {
-      return Center(
-        child: PipTimerCapsule(
-          snapshot: timer,
-          keepScreenOn: settings.keepScreenOnEnabled,
-          onToggleKeepScreenOn: () {
-            controller.updateSettings(
-              settings.copyWith(
-                keepScreenOnEnabled: !settings.keepScreenOnEnabled,
-              ),
-            );
-          },
-        ),
-      );
+      return PipTimerBox(snapshot: timer);
     }
 
+    final settings = data.settings;
     return LayoutBuilder(
       builder: (context, constraints) {
         final actionsBottom = _actionsBottom(context);
@@ -1317,163 +1341,106 @@ class _RingPainter extends CustomPainter {
   }
 }
 
-class PipTimerCapsule extends StatelessWidget {
-  const PipTimerCapsule({
-    required this.snapshot,
-    required this.keepScreenOn,
-    required this.onToggleKeepScreenOn,
-    super.key,
-  });
+class PipTimerBox extends StatelessWidget {
+  const PipTimerBox({required this.snapshot, super.key});
 
   final TimerSnapshot snapshot;
-  final bool keepScreenOn;
-  final VoidCallback onToggleKeepScreenOn;
 
   @override
   Widget build(BuildContext context) {
-    final total = math.max(1, snapshot.totalSeconds);
-    final remaining = snapshot.remainingSeconds.clamp(0, total);
-    final elapsed = (total - remaining).clamp(0, total);
-    final progress = elapsed / total;
     final palette = _modePalette(snapshot.mode);
-    final isBreak = snapshot.mode != TimerMode.focus;
     final background = palette.backgroundFor(context);
-    final softColor = Color.lerp(
-      background,
-      palette.accent,
-      Theme.of(context).colorScheme.brightness == Brightness.dark ? 0.46 : 0.24,
-    )!;
-    final midColor = Color.lerp(softColor, palette.accent, 0.58)!;
-    final onCapsule = _contrastOn(palette.accent);
-    final textStyle = Theme.of(context).textTheme.headlineLarge?.copyWith(
-      height: 0.95,
-      letterSpacing: 0,
-      fontWeight: FontWeight.w800,
-      color: onCapsule,
-      fontFeatures: const [FontFeature.tabularFigures()],
-    );
+    final tileColor = palette.accent;
+    final onTile = _contrastOn(tileColor);
+    final darkText =
+        ThemeData.estimateBrightnessForColor(onTile) == Brightness.dark;
+    final maskColor = darkText
+        ? Colors.white.withAlpha(48)
+        : Colors.black.withAlpha(42);
+    final shadeColor = darkText
+        ? Colors.black.withAlpha(18)
+        : Colors.white.withAlpha(20);
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final compact =
-            constraints.maxWidth < 260 || constraints.maxHeight < 110;
-        final outerPadding = compact ? 6.0 : 8.0;
-        final capsuleHeight = math
-            .min(
-              compact ? 58.0 : 68.0,
-              constraints.maxHeight - outerPadding * 2,
-            )
-            .clamp(46.0, 68.0);
-        final side = compact ? 30.0 : 34.0;
-        final radius = BorderRadius.circular(capsuleHeight / 2);
-        final backgroundGradient = LinearGradient(
-          begin: isBreak ? Alignment.centerRight : Alignment.centerLeft,
-          end: isBreak ? Alignment.centerLeft : Alignment.centerRight,
-          colors: isBreak ? [midColor, softColor] : [softColor, midColor],
+        final shortest = math.min(
+          constraints.maxWidth.isFinite ? constraints.maxWidth : 240,
+          constraints.maxHeight.isFinite ? constraints.maxHeight : 240,
         );
-        final progressGradient = LinearGradient(
-          begin: isBreak ? Alignment.centerRight : Alignment.centerLeft,
-          end: isBreak ? Alignment.centerLeft : Alignment.centerRight,
-          colors: isBreak
-              ? [palette.accent, midColor, softColor]
-              : [softColor, midColor, palette.accent],
-        );
+        final safeShortest = math.max(96.0, shortest);
+        final outerPadding = (safeShortest * 0.055).clamp(6.0, 14.0);
+        final radius = (safeShortest * 0.10).clamp(12.0, 24.0);
+        final innerPadding = (safeShortest * 0.11).clamp(12.0, 28.0);
+        final fontSize =
+            (safeShortest * (snapshot.remainingSeconds >= 3600 ? 0.23 : 0.30))
+                .clamp(30.0, 74.0);
 
-        return Padding(
-          padding: EdgeInsets.all(outerPadding),
-          child: SizedBox(
-            width: double.infinity,
-            height: capsuleHeight,
-            child: Material(
-              color: Colors.transparent,
-              borderRadius: radius,
-              clipBehavior: Clip.antiAlias,
-              child: Stack(
-                children: [
-                  Positioned.fill(
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(gradient: backgroundGradient),
-                    ),
+        return ColoredBox(
+          color: background,
+          child: Padding(
+            padding: EdgeInsets.all(outerPadding),
+            child: Center(
+              child: AspectRatio(
+                aspectRatio: 1,
+                child: DecoratedBox(
+                  key: const ValueKey('pip_timer_box_surface'),
+                  decoration: BoxDecoration(
+                    color: tileColor,
+                    borderRadius: BorderRadius.circular(radius),
+                    border: Border.all(color: onTile.withAlpha(46), width: 1),
                   ),
-                  TweenAnimationBuilder<double>(
-                    tween: Tween<double>(end: progress),
-                    duration: const Duration(milliseconds: 640),
-                    curve: Curves.easeOutCubic,
-                    builder: (context, value, child) {
-                      return Align(
-                        alignment: isBreak
-                            ? Alignment.centerRight
-                            : Alignment.centerLeft,
-                        child: FractionallySizedBox(
-                          widthFactor: value.clamp(0.0, 1.0),
-                          heightFactor: 1,
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                              gradient: progressGradient,
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                  Padding(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: compact ? 8 : 10,
-                      vertical: compact ? 5 : 6,
-                    ),
-                    child: Row(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(radius),
+                    child: Stack(
+                      fit: StackFit.expand,
                       children: [
-                        SizedBox.square(
-                          dimension: side,
+                        DecoratedBox(
+                          decoration: BoxDecoration(color: maskColor),
+                        ),
+                        Align(
+                          alignment: Alignment.topLeft,
+                          child: FractionallySizedBox(
+                            widthFactor: 0.72,
+                            heightFactor: 0.72,
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                gradient: RadialGradient(
+                                  center: Alignment.topLeft,
+                                  radius: 1,
+                                  colors: [shadeColor, Colors.transparent],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        Padding(
+                          padding: EdgeInsets.all(innerPadding),
                           child: Center(
-                            child: Icon(
-                              isBreak
-                                  ? Icons.self_improvement_outlined
-                                  : Icons.radio_button_checked,
-                              size: compact ? 17 : 19,
-                              color: onCapsule,
-                            ),
-                          ),
-                        ),
-                        Expanded(
-                          child: FittedBox(
-                            fit: BoxFit.scaleDown,
-                            child: Text(
-                              formatClock(snapshot.remainingSeconds),
-                              textAlign: TextAlign.center,
-                              softWrap: false,
-                              style:
-                                  textStyle ??
-                                  TextStyle(
-                                    fontSize: compact ? 32 : 40,
-                                    color: onCapsule,
-                                  ),
-                            ),
-                          ),
-                        ),
-                        SizedBox.square(
-                          dimension: side,
-                          child: IconButton(
-                            tooltip: keepScreenOn ? '关闭屏幕常亮' : '开启屏幕常亮',
-                            padding: EdgeInsets.zero,
-                            style: IconButton.styleFrom(
-                              foregroundColor: onCapsule,
-                              backgroundColor: Colors.transparent,
-                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                            ),
-                            iconSize: compact ? 17 : 19,
-                            onPressed: onToggleKeepScreenOn,
-                            icon: Icon(
-                              keepScreenOn
-                                  ? Icons.lightbulb
-                                  : Icons.lightbulb_outline,
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                formatClock(snapshot.remainingSeconds),
+                                textAlign: TextAlign.center,
+                                softWrap: false,
+                                style: Theme.of(context).textTheme.displayMedium
+                                    ?.copyWith(
+                                      height: 0.92,
+                                      letterSpacing: 0,
+                                      fontSize: fontSize,
+                                      fontWeight: FontWeight.w800,
+                                      color: onTile,
+                                      fontFeatures: const [
+                                        FontFeature.tabularFigures(),
+                                      ],
+                                    ),
+                              ),
                             ),
                           ),
                         ),
                       ],
                     ),
                   ),
-                ],
+                ),
               ),
             ),
           ),
