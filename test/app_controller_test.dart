@@ -58,7 +58,7 @@ void main() {
       expect(feedback.completedMode, TimerMode.focus);
       expect(feedback.settings, isNotNull);
       expect(controller.data.timer.mode, TimerMode.shortBreak);
-      expect(controller.data.timer.phase, TimerPhase.idle);
+      expect(controller.data.timer.phase, TimerPhase.running);
       expect(controller.data.sessions, hasLength(1));
       expect(store.data.sessions, hasLength(1));
 

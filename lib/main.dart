@@ -80,6 +80,18 @@ const _wenKaiFontFallback = <String>[
   'LXGW WenKai Screen',
   'serif',
 ];
+const _dockHeight = 58.0;
+const _dockBottomMargin = 14.0;
+const _dockHorizontalMargin = 24.0;
+const _actionDockGap = 12.0;
+
+double _dockBottom(BuildContext context) {
+  return _dockBottomMargin + MediaQuery.paddingOf(context).bottom;
+}
+
+double _actionsBottom(BuildContext context) {
+  return _dockBottom(context) + _dockHeight + _actionDockGap;
+}
 
 ThemeData _buildAppTheme(Brightness brightness) {
   final scheme = ColorScheme.fromSeed(
@@ -539,58 +551,76 @@ class _TimerPage extends StatelessWidget {
       );
     }
 
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onRequestQuiet,
-      child: Stack(
-        children: [
-          Center(child: TimerProgressRing(snapshot: timer)),
-          Center(
-            child: Transform.translate(
-              offset: const Offset(0, -204),
-              child: _ChromeFade(
-                hidden: quiet,
-                child: _HitokotoLine(mode: timer.mode),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final actionsBottom = _actionsBottom(context);
+        final bottomReserve = actionsBottom + 72;
+        final quoteTop = (constraints.maxHeight * 0.14).clamp(70.0, 118.0);
+        final maxRingDimension = math.min(
+          318.0,
+          math.max(216.0, constraints.maxHeight - quoteTop - bottomReserve),
+        );
+
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onRequestQuiet,
+          child: Stack(
+            children: [
+              Center(
+                child: TimerProgressRing(
+                  snapshot: timer,
+                  maxDimension: maxRingDimension,
+                ),
               ),
-            ),
-          ),
-          Positioned(
-            left: 20,
-            right: 20,
-            bottom: 116 + MediaQuery.paddingOf(context).bottom,
-            child: _ChromeFade(
-              hidden: quiet,
-              slideOffset: const Offset(0, 0.14),
-              child: _TimerActions(
-                controller: controller,
-                mode: timer.mode,
-                phase: timer.phase,
-                keepScreenOn: settings.keepScreenOnEnabled,
-                onToggleKeepScreenOn: () {
-                  controller.updateSettings(
-                    settings.copyWith(
-                      keepScreenOnEnabled: !settings.keepScreenOnEnabled,
-                    ),
-                  );
-                },
-                onEnterPictureInPicture: onEnterPictureInPicture,
+              Positioned(
+                left: 24,
+                right: 24,
+                top: quoteTop,
+                child: _ChromeFade(
+                  hidden: quiet,
+                  slideOffset: const Offset(0, -0.08),
+                  child: _HitokotoLine(mode: timer.mode),
+                ),
               ),
-            ),
-          ),
-          Positioned(
-            left: 20,
-            right: 20,
-            top: 16,
-            child: _ChromeFade(
-              hidden: quiet,
-              slideOffset: const Offset(0, -0.08),
-              child: Center(
-                child: _PhasePill(mode: timer.mode, phase: timer.phase),
+              Positioned(
+                left: 16,
+                right: 16,
+                bottom: actionsBottom,
+                child: _ChromeFade(
+                  hidden: quiet,
+                  slideOffset: const Offset(0, 0.14),
+                  child: _TimerActions(
+                    controller: controller,
+                    mode: timer.mode,
+                    phase: timer.phase,
+                    keepScreenOn: settings.keepScreenOnEnabled,
+                    onToggleKeepScreenOn: () {
+                      controller.updateSettings(
+                        settings.copyWith(
+                          keepScreenOnEnabled: !settings.keepScreenOnEnabled,
+                        ),
+                      );
+                    },
+                    onEnterPictureInPicture: onEnterPictureInPicture,
+                  ),
+                ),
               ),
-            ),
+              Positioned(
+                left: 20,
+                right: 20,
+                top: 16,
+                child: _ChromeFade(
+                  hidden: quiet,
+                  slideOffset: const Offset(0, -0.08),
+                  child: Center(
+                    child: _PhasePill(mode: timer.mode, phase: timer.phase),
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
@@ -609,40 +639,114 @@ class _FloatingDock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Positioned(
-      left: 18,
-      right: 18,
-      bottom: 20 + MediaQuery.paddingOf(context).bottom,
+      left: _dockHorizontalMargin,
+      right: _dockHorizontalMargin,
+      bottom: _dockBottom(context),
       child: _ChromeFade(
         hidden: hidden,
         slideOffset: const Offset(0, 0.18),
-        child: Material(
-          elevation: 10,
-          shadowColor: Colors.black.withAlpha(36),
-          color: Theme.of(context).colorScheme.surface.withAlpha(238),
-          borderRadius: BorderRadius.circular(28),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(28),
-            child: NavigationBar(
-              backgroundColor: Colors.transparent,
-              elevation: 0,
-              height: 64,
-              selectedIndex: selectedIndex,
-              onDestinationSelected: onSelected,
-              destinations: const [
-                NavigationDestination(
-                  icon: Icon(Icons.timer_outlined),
-                  selectedIcon: Icon(Icons.timer),
-                  label: '番茄钟',
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: Material(
+              elevation: 10,
+              shadowColor: Colors.black.withAlpha(36),
+              color: Theme.of(context).colorScheme.surface.withAlpha(238),
+              borderRadius: BorderRadius.circular(999),
+              child: SizedBox(
+                height: _dockHeight,
+                child: Padding(
+                  padding: const EdgeInsets.all(5),
+                  child: Row(
+                    children: [
+                      _DockItem(
+                        icon: Icons.timer_outlined,
+                        selectedIcon: Icons.timer,
+                        label: '番茄钟',
+                        selected: selectedIndex == 0,
+                        onTap: () => onSelected(0),
+                      ),
+                      _DockItem(
+                        icon: Icons.bar_chart_outlined,
+                        selectedIcon: Icons.bar_chart,
+                        label: '统计',
+                        selected: selectedIndex == 1,
+                        onTap: () => onSelected(1),
+                      ),
+                      _DockItem(
+                        icon: Icons.settings_outlined,
+                        selectedIcon: Icons.settings,
+                        label: '设置',
+                        selected: selectedIndex == 2,
+                        onTap: () => onSelected(2),
+                      ),
+                    ],
+                  ),
                 ),
-                NavigationDestination(
-                  icon: Icon(Icons.bar_chart_outlined),
-                  selectedIcon: Icon(Icons.bar_chart),
-                  label: '统计',
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DockItem extends StatelessWidget {
+  const _DockItem({
+    required this.icon,
+    required this.selectedIcon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final IconData selectedIcon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Expanded(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 2),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(999),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            decoration: BoxDecoration(
+              color: selected ? scheme.primaryContainer : Colors.transparent,
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  selected ? selectedIcon : icon,
+                  size: 20,
+                  color: selected ? scheme.onPrimaryContainer : scheme.primary,
                 ),
-                NavigationDestination(
-                  icon: Icon(Icons.settings_outlined),
-                  selectedIcon: Icon(Icons.settings),
-                  label: '设置',
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: selected
+                          ? scheme.onPrimaryContainer
+                          : scheme.onSurfaceVariant,
+                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                      letterSpacing: 0,
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -883,25 +987,53 @@ class _HitokotoLine extends StatelessWidget {
     final dayIndex = day.difference(DateTime(now.year)).inDays;
     final message = messages[(dayIndex + mode.index * 2) % messages.length];
     final theme = Theme.of(context);
-    final color = theme.colorScheme.onSurfaceVariant;
+    final scheme = theme.colorScheme;
+    final palette = _modePalette(mode);
 
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 220),
       switchInCurve: Curves.easeOutCubic,
       switchOutCurve: Curves.easeInCubic,
-      child: Text(
-        message,
+      child: Container(
         key: ValueKey('${mode.name}-$message'),
-        textAlign: TextAlign.center,
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
-        style: theme.textTheme.titleMedium?.copyWith(
-          color: color,
-          fontFamily: _wenKaiFontFamily,
-          fontFamilyFallback: _wenKaiFontFallback,
-          fontWeight: FontWeight.w500,
-          height: 1.45,
-          letterSpacing: 0,
+        constraints: const BoxConstraints(maxWidth: 342),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: scheme.surface.withAlpha(190),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: palette.accent.withAlpha(72)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 3,
+              height: 28,
+              decoration: BoxDecoration(
+                color: palette.accent,
+                borderRadius: BorderRadius.circular(999),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Icon(Icons.format_quote, size: 18, color: palette.accent),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                message,
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                  fontFamily: _wenKaiFontFamily,
+                  fontFamilyFallback: _wenKaiFontFallback,
+                  fontWeight: FontWeight.w500,
+                  height: 1.35,
+                  letterSpacing: 0,
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -909,9 +1041,14 @@ class _HitokotoLine extends StatelessWidget {
 }
 
 class TimerProgressRing extends StatefulWidget {
-  const TimerProgressRing({required this.snapshot, super.key});
+  const TimerProgressRing({
+    required this.snapshot,
+    required this.maxDimension,
+    super.key,
+  });
 
   final TimerSnapshot snapshot;
+  final double maxDimension;
 
   @override
   State<TimerProgressRing> createState() => _TimerProgressRingState();
@@ -995,7 +1132,7 @@ class _TimerProgressRingState extends State<TimerProgressRing>
       builder: (context, constraints) {
         final shortest = math.min(constraints.maxWidth, constraints.maxHeight);
         final available = math.max(180.0, shortest - 48);
-        final dimension = math.min(318.0, available);
+        final dimension = math.min(widget.maxDimension, available);
 
         return Center(
           child: AnimatedBuilder(
@@ -1299,70 +1436,143 @@ class _TimerActions extends StatelessWidget {
     final canStop = phase != TimerPhase.idle;
     final canSkip = running && mode != TimerMode.focus;
     final scheme = Theme.of(context).colorScheme;
-    return Center(
-      child: Material(
-        elevation: 10,
-        shadowColor: Colors.black.withAlpha(34),
-        color: scheme.surface.withAlpha(236),
-        borderRadius: BorderRadius.circular(28),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-          child: Wrap(
-            alignment: WrapAlignment.center,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              FilledButton.icon(
-                onPressed: running
-                    ? controller.pause
-                    : () {
-                        unawaited(HapticFeedback.mediumImpact());
-                        controller.start();
-                      },
-                icon: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 180),
-                  child: Icon(
-                    running ? Icons.pause : Icons.play_arrow,
-                    key: ValueKey(running),
-                  ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 360;
+        final tight = constraints.maxWidth < 330;
+        final iconSize = compact ? 38.0 : 42.0;
+        final buttonPadding = EdgeInsets.symmetric(
+          horizontal: compact ? 12 : 14,
+          vertical: 0,
+        );
+        final buttonStyle = ButtonStyle(
+          visualDensity: VisualDensity.compact,
+          minimumSize: const WidgetStatePropertyAll(Size(0, 40)),
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          padding: WidgetStatePropertyAll(buttonPadding),
+        );
+
+        return Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: Material(
+              elevation: 10,
+              shadowColor: Colors.black.withAlpha(34),
+              color: scheme.surface.withAlpha(236),
+              borderRadius: BorderRadius.circular(999),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    FilledButton.icon(
+                      style: buttonStyle,
+                      onPressed: running
+                          ? controller.pause
+                          : () {
+                              unawaited(HapticFeedback.mediumImpact());
+                              controller.start();
+                            },
+                      icon: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 180),
+                        child: Icon(
+                          running ? Icons.pause : Icons.play_arrow,
+                          key: ValueKey(running),
+                          size: 20,
+                        ),
+                      ),
+                      label: Text(running ? '暂停' : '开始'),
+                    ),
+                    const SizedBox(width: 7),
+                    if (tight)
+                      _ActionIconButton(
+                        size: iconSize,
+                        tooltip: '停止',
+                        onPressed: canStop
+                            ? () {
+                                unawaited(HapticFeedback.heavyImpact());
+                                controller.stop();
+                              }
+                            : null,
+                        icon: Icons.stop_circle_outlined,
+                      )
+                    else
+                      OutlinedButton.icon(
+                        style: buttonStyle,
+                        onPressed: canStop
+                            ? () {
+                                unawaited(HapticFeedback.heavyImpact());
+                                controller.stop();
+                              }
+                            : null,
+                        icon: const Icon(Icons.stop_circle_outlined, size: 20),
+                        label: const Text('停止'),
+                      ),
+                    const SizedBox(width: 7),
+                    _ActionIconButton(
+                      size: iconSize,
+                      tooltip: keepScreenOn ? '关闭屏幕常亮' : '开启屏幕常亮',
+                      selected: keepScreenOn,
+                      onPressed: onToggleKeepScreenOn,
+                      icon: keepScreenOn
+                          ? Icons.lightbulb
+                          : Icons.lightbulb_outline,
+                    ),
+                    const SizedBox(width: 6),
+                    _ActionIconButton(
+                      size: iconSize,
+                      tooltip: '进入画中画',
+                      onPressed: phase == TimerPhase.running
+                          ? onEnterPictureInPicture
+                          : null,
+                      icon: Icons.picture_in_picture_alt_outlined,
+                    ),
+                    const SizedBox(width: 6),
+                    _ActionIconButton(
+                      size: iconSize,
+                      tooltip: '跳过休息',
+                      onPressed: canSkip ? controller.skip : null,
+                      icon: Icons.skip_next,
+                    ),
+                  ],
                 ),
-                label: Text(running ? '暂停' : '开始'),
               ),
-              OutlinedButton.icon(
-                onPressed: canStop
-                    ? () {
-                        unawaited(HapticFeedback.heavyImpact());
-                        controller.stop();
-                      }
-                    : null,
-                icon: const Icon(Icons.stop_circle_outlined),
-                label: const Text('停止'),
-              ),
-              IconButton.filledTonal(
-                tooltip: keepScreenOn ? '关闭屏幕常亮' : '开启屏幕常亮',
-                isSelected: keepScreenOn,
-                onPressed: onToggleKeepScreenOn,
-                icon: Icon(
-                  keepScreenOn ? Icons.lightbulb : Icons.lightbulb_outline,
-                ),
-              ),
-              IconButton.filledTonal(
-                tooltip: '进入画中画',
-                onPressed: phase == TimerPhase.running
-                    ? onEnterPictureInPicture
-                    : null,
-                icon: const Icon(Icons.picture_in_picture_alt_outlined),
-              ),
-              IconButton.filledTonal(
-                tooltip: '跳过休息',
-                onPressed: canSkip ? controller.skip : null,
-                icon: const Icon(Icons.skip_next),
-              ),
-            ],
+            ),
           ),
-        ),
+        );
+      },
+    );
+  }
+}
+
+class _ActionIconButton extends StatelessWidget {
+  const _ActionIconButton({
+    required this.size,
+    required this.tooltip,
+    required this.onPressed,
+    required this.icon,
+    this.selected = false,
+  });
+
+  final double size;
+  final String tooltip;
+  final VoidCallback? onPressed;
+  final IconData icon;
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton.filledTonal(
+      tooltip: tooltip,
+      isSelected: selected,
+      onPressed: onPressed,
+      style: IconButton.styleFrom(
+        fixedSize: Size.square(size),
+        minimumSize: Size.square(size),
+        padding: EdgeInsets.zero,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       ),
+      icon: Icon(icon, size: 20),
     );
   }
 }

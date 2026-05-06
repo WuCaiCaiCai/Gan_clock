@@ -205,7 +205,7 @@ class TomatoTimerEngine {
 
     return data.copyWith(
       sessions: sessions,
-      timer: snapshotForMode(nextMode, data.settings),
+      timer: _runningSnapshotForMode(nextMode, data.settings, now),
       focusCycleCount: cycleCount,
       updatedAt: now,
     );
@@ -248,6 +248,22 @@ class TomatoTimerEngine {
       return TimerMode.longBreak;
     }
     return TimerMode.shortBreak;
+  }
+
+  TimerSnapshot _runningSnapshotForMode(
+    TimerMode mode,
+    AppSettings settings,
+    DateTime now,
+  ) {
+    final seconds = mode.durationSeconds(settings);
+    return TimerSnapshot(
+      mode: mode,
+      phase: TimerPhase.running,
+      totalSeconds: seconds,
+      remainingSeconds: seconds,
+      startedAt: now,
+      endsAt: now.add(Duration(seconds: seconds)),
+    );
   }
 
   int _remainingSeconds(TimerSnapshot snapshot, DateTime now) {

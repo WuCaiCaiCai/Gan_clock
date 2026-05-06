@@ -24,8 +24,9 @@ void main() {
     );
   });
 
-  test('completes focus session and advances to short break', () {
+  test('completes focus session and continues into short break', () {
     final start = DateTime(2026, 1, 1, 9);
+    final completedAt = start.add(const Duration(seconds: 2));
     final data = TomatoData.initial().copyWith(
       timer:
           const TimerSnapshot(
@@ -41,14 +42,48 @@ void main() {
           ),
     );
 
-    final result = engine.tick(data, at: start.add(const Duration(seconds: 2)));
+    final result = engine.tick(data, at: completedAt);
 
     expect(result.completedMode, TimerMode.focus);
     expect(result.data.timer.mode, TimerMode.shortBreak);
-    expect(result.data.timer.phase, TimerPhase.idle);
+    expect(result.data.timer.phase, TimerPhase.running);
+    expect(result.data.timer.remainingSeconds, 300);
+    expect(result.data.timer.startedAt, completedAt);
+    expect(
+      result.data.timer.endsAt,
+      completedAt.add(const Duration(minutes: 5)),
+    );
     expect(result.data.focusCycleCount, 1);
     expect(result.data.sessions, hasLength(1));
     expect(result.data.sessions.single.completed, isTrue);
+  });
+
+  test('completes break and continues into focus', () {
+    final start = DateTime(2026, 1, 1, 9);
+    final completedAt = start.add(const Duration(seconds: 2));
+    final data = TomatoData.initial().copyWith(
+      timer:
+          const TimerSnapshot(
+            mode: TimerMode.shortBreak,
+            phase: TimerPhase.running,
+            totalSeconds: 300,
+            remainingSeconds: 1,
+          ).copyWith(
+            startedAt: start,
+            endsAt: start.add(const Duration(seconds: 1)),
+          ),
+    );
+
+    final result = engine.tick(data, at: completedAt);
+
+    expect(result.completedMode, TimerMode.shortBreak);
+    expect(result.data.timer.mode, TimerMode.focus);
+    expect(result.data.timer.phase, TimerPhase.running);
+    expect(result.data.timer.remainingSeconds, 1500);
+    expect(
+      result.data.timer.endsAt,
+      completedAt.add(const Duration(minutes: 25)),
+    );
   });
 
   test('pause keeps remaining seconds and resume creates a new end time', () {
@@ -160,6 +195,7 @@ void main() {
 
     expect(result.completedMode, TimerMode.focus);
     expect(result.data.timer.mode, TimerMode.shortBreak);
+    expect(result.data.timer.phase, TimerPhase.running);
     expect(result.data.focusCycleCount, 0);
     expect(result.data.sessions, isEmpty);
     expect(result.data.totalFocusSeconds, 0);
