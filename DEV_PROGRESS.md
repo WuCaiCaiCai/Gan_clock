@@ -4,7 +4,7 @@
 
 跨平台番茄钟，Flutter + Dart，Material Design 3，轻量低功耗。
 
-**当前阶段:** 番茄钟主流程已完成，计时区视觉上移，沉浸态只保留一言和时钟，PiP 胶囊改为方向性渐变进度。
+**当前阶段:** 番茄钟主流程已完成，计时区视觉上移，沉浸态只保留一言和时钟，PiP 胶囊改为方向性渐变进度，并切换为用户提供的 SVG 启动图标。
 
 ## 完成
 
@@ -47,7 +47,7 @@
 - [x] Android / iOS / Linux / macOS / Windows 平台目录就绪
 - [x] Android 入口改为 Java `MainActivity`，保留 FlutterActivity 嵌入并接入画中画/屏幕常亮
 - [x] Android Gradle 脚本改为 Groovy，移除 Kotlin DSL 和 Kotlin 插件
-- [x] Android 自绘矢量图标 — 亮色/夜间自适应地球 emoji 风格图标
+- [x] Android 启动图标 — 使用用户提供的 SVG 源文件生成自适应 Vector foreground 和各密度 PNG
 
 ## 待开发
 
@@ -91,6 +91,11 @@
 - [x] 性能优化 — 热力图 RepaintBoundary，原生桥接移除后减少平台调用
 
 ## 开发日志
+
+### 2026-05-06 使用用户提供 SVG 图标
+- 将根目录 `icon.svg` 作为启动图标源文件纳入项目。
+- Android 自适应图标 foreground 改为由该 SVG 生成的 VectorDrawable，亮色和夜间资源保持一致。
+- 重新生成 `mipmap-mdpi` 到 `mipmap-xxxhdpi` 的 legacy launcher PNG，兼容不使用 adaptive icon 的启动器。
 
 ### 2026-05-06 视觉重心与 PiP 进度
 - 计时圆环和一言整体上移，让主视觉从屏幕正中略微抬高，更适合手机握持视线。
