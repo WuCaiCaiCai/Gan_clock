@@ -36,6 +36,11 @@ void main() {
     expect(find.byIcon(Icons.play_arrow), findsOneWidget);
     expect(find.text('专注热力图'), findsNothing);
 
+    await tester.tap(find.text('开始'));
+    await tester.pump(const Duration(milliseconds: 120));
+    expect(find.text('暂停'), findsOneWidget);
+    expect(find.byIcon(Icons.pause), findsOneWidget);
+
     await tester.tap(find.text('统计'));
     await tester.pumpAndSettle();
     expect(find.text('专注热力图'), findsOneWidget);

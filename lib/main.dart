@@ -377,7 +377,7 @@ class _ModeSelector extends StatelessWidget {
   }
 }
 
-class TimerProgressRing extends StatelessWidget {
+class TimerProgressRing extends StatefulWidget {
   const TimerProgressRing({
     required this.snapshot,
     required this.color,
@@ -388,46 +388,154 @@ class TimerProgressRing extends StatelessWidget {
   final Color color;
 
   @override
+  State<TimerProgressRing> createState() => _TimerProgressRingState();
+}
+
+class _TimerProgressRingState extends State<TimerProgressRing>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _startPulseController;
+  late final Animation<double> _scaleAnimation;
+  late final Animation<double> _haloAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _startPulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 720),
+    );
+    _scaleAnimation = TweenSequence<double>([
+      TweenSequenceItem(
+        tween: Tween<double>(
+          begin: 1,
+          end: 1.028,
+        ).chain(CurveTween(curve: Curves.easeOutCubic)),
+        weight: 42,
+      ),
+      TweenSequenceItem(
+        tween: Tween<double>(
+          begin: 1.028,
+          end: 1,
+        ).chain(CurveTween(curve: Curves.easeInOutCubic)),
+        weight: 58,
+      ),
+    ]).animate(_startPulseController);
+    _haloAnimation = TweenSequence<double>([
+      TweenSequenceItem(
+        tween: Tween<double>(
+          begin: 0,
+          end: 1,
+        ).chain(CurveTween(curve: Curves.easeOutCubic)),
+        weight: 28,
+      ),
+      TweenSequenceItem(
+        tween: Tween<double>(
+          begin: 1,
+          end: 0,
+        ).chain(CurveTween(curve: Curves.easeInCubic)),
+        weight: 72,
+      ),
+    ]).animate(_startPulseController);
+  }
+
+  @override
+  void didUpdateWidget(covariant TimerProgressRing oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final started =
+        oldWidget.snapshot.phase != TimerPhase.running &&
+        widget.snapshot.phase == TimerPhase.running;
+    if (started) {
+      _startPulseController.forward(from: 0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _startPulseController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final total = math.max(1, snapshot.totalSeconds);
-    final elapsed = (total - snapshot.remainingSeconds).clamp(0, total);
+    final total = math.max(1, widget.snapshot.totalSeconds);
+    final elapsed = (total - widget.snapshot.remainingSeconds).clamp(0, total);
     final progress = elapsed / total;
     final textTheme = Theme.of(context).textTheme;
 
     return Center(
-      child: SizedBox.square(
-        dimension: 284,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            CustomPaint(
-              painter: _RingPainter(progress: progress, color: color),
-            ),
-            Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(_modeIcon(snapshot.mode), color: color, size: 34),
-                  const SizedBox(height: 12),
-                  Text(
-                    formatClock(snapshot.remainingSeconds),
-                    style: textTheme.displayMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: const Color(0xFF202124),
-                      fontFeatures: const [FontFeature.tabularFigures()],
-                    ),
+      child: AnimatedBuilder(
+        animation: _startPulseController,
+        builder: (context, child) {
+          return Transform.scale(scale: _scaleAnimation.value, child: child);
+        },
+        child: TweenAnimationBuilder<double>(
+          tween: Tween<double>(end: progress),
+          duration: widget.snapshot.phase == TimerPhase.running
+              ? const Duration(milliseconds: 680)
+              : const Duration(milliseconds: 320),
+          curve: Curves.easeOutCubic,
+          builder: (context, animatedProgress, child) {
+            return AnimatedBuilder(
+              animation: _startPulseController,
+              builder: (context, _) {
+                return SizedBox.square(
+                  dimension: 284,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      CustomPaint(
+                        painter: _RingPainter(
+                          progress: animatedProgress,
+                          color: widget.color,
+                          haloOpacity: _haloAnimation.value,
+                        ),
+                      ),
+                      Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 220),
+                              switchInCurve: Curves.easeOutCubic,
+                              switchOutCurve: Curves.easeInCubic,
+                              child: Icon(
+                                _modeIcon(widget.snapshot.mode),
+                                key: ValueKey(widget.snapshot.mode),
+                                color: widget.color,
+                                size: 34,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              formatClock(widget.snapshot.remainingSeconds),
+                              style: textTheme.displayMedium?.copyWith(
+                                fontWeight: FontWeight.w700,
+                                color: const Color(0xFF202124),
+                                fontFeatures: const [
+                                  FontFeature.tabularFigures(),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 180),
+                              child: Text(
+                                _phaseLabel(widget.snapshot.phase),
+                                key: ValueKey(widget.snapshot.phase),
+                                style: textTheme.titleMedium?.copyWith(
+                                  color: const Color(0xFF5F656B),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    _phaseLabel(snapshot.phase),
-                    style: textTheme.titleMedium?.copyWith(
-                      color: const Color(0xFF5F656B),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
+                );
+              },
+            );
+          },
         ),
       ),
     );
@@ -435,10 +543,15 @@ class TimerProgressRing extends StatelessWidget {
 }
 
 class _RingPainter extends CustomPainter {
-  const _RingPainter({required this.progress, required this.color});
+  const _RingPainter({
+    required this.progress,
+    required this.color,
+    required this.haloOpacity,
+  });
 
   final double progress;
   final Color color;
+  final double haloOpacity;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -456,8 +569,16 @@ class _RingPainter extends CustomPainter {
       ..strokeWidth = stroke
       ..strokeCap = StrokeCap.round
       ..color = color;
+    final halo = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 28
+      ..strokeCap = StrokeCap.round
+      ..color = color.withAlpha((haloOpacity * 34).round());
 
     canvas.drawArc(rect, 0, math.pi * 2, false, background);
+    if (haloOpacity > 0) {
+      canvas.drawArc(rect, 0, math.pi * 2, false, halo);
+    }
     canvas.drawArc(
       rect,
       -math.pi / 2,
@@ -469,7 +590,9 @@ class _RingPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _RingPainter oldDelegate) {
-    return oldDelegate.progress != progress || oldDelegate.color != color;
+    return oldDelegate.progress != progress ||
+        oldDelegate.color != color ||
+        oldDelegate.haloOpacity != haloOpacity;
   }
 }
 

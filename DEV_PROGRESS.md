@@ -33,6 +33,9 @@
 - [x] 一级界面拆分 — 番茄钟 / 统计 / 设置
 - [x] 设置分条目 — 计时设置、切换提醒、WebDAV 同步独立配置
 
+### 动效
+- [x] 番茄钟启动动效 — 圆环局部脉冲、缓出进度补间、阶段文字淡切
+
 ### 平台脚手架
 - [x] Android / iOS / Linux / macOS / Windows 平台目录就绪
 - [x] Android 入口改为 `io.flutter.embedding.android.FlutterActivity`
@@ -75,6 +78,11 @@
 - [x] 性能优化 — 热力图 RepaintBoundary，原生桥接移除后减少平台调用
 
 ## 开发日志
+
+### 2026-05-06 启动动效优化
+- `TimerProgressRing` 改为局部 Stateful 动画，启动时只对计时器圆环做轻微缩放和光晕脉冲。
+- 圆环进度从线性跳变改为 `easeOutCubic` 补间，减少每秒 tick 的生硬感。
+- 模式图标和阶段文字使用短时 `AnimatedSwitcher` 淡切，避免整页一起动。
 
 ### 2026-05-06 信息架构调整
 - 主界面聚焦番茄钟本身，只保留模式切换、倒计时圆环和操作按钮。
