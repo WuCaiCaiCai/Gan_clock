@@ -137,7 +137,7 @@ class _TomatoHomePageState extends State<TomatoHomePage> {
     final data = controller.data;
 
     return Scaffold(
-      appBar: AppBar(title: Text(_pageTitle(_selectedIndex))),
+      appBar: AppBar(title: Text(_pageTitle)),
       body: SafeArea(
         child: controller.loading
             ? const Center(child: CircularProgressIndicator())
@@ -179,6 +179,19 @@ class _TomatoHomePageState extends State<TomatoHomePage> {
         ],
       ),
     );
+  }
+
+  String get _pageTitle {
+    switch (_selectedIndex) {
+      case 0:
+        return '番茄钟';
+      case 1:
+        return '统计';
+      case 2:
+        return '设置';
+      default:
+        return 'TomatoClock';
+    }
   }
 }
 
@@ -300,45 +313,32 @@ class _SettingsPage extends StatelessWidget {
       ),
     );
   }
-}
 
-String _pageTitle(int index) {
-  switch (index) {
-    case 0:
-      return '番茄钟';
-    case 1:
-      return '统计';
-    case 2:
-      return '设置';
-    default:
-      return 'TomatoClock';
+  void _openTimerSettings(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (_) => const _TimerSettingsSheet(),
+    );
   }
-}
 
-void _openTimerSettings(BuildContext context) {
-  showModalBottomSheet<void>(
-    context: context,
-    showDragHandle: true,
-    isScrollControlled: true,
-    builder: (_) => const _TimerSettingsSheet(),
-  );
-}
+  void _openFeedbackSettings(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (_) => const _FeedbackSettingsSheet(),
+    );
+  }
 
-void _openFeedbackSettings(BuildContext context) {
-  showModalBottomSheet<void>(
-    context: context,
-    showDragHandle: true,
-    builder: (_) => const _FeedbackSettingsSheet(),
-  );
-}
-
-void _openWebDavSettings(BuildContext context) {
-  showModalBottomSheet<void>(
-    context: context,
-    showDragHandle: true,
-    isScrollControlled: true,
-    builder: (_) => const _WebDavSettingsSheet(),
-  );
+  void _openWebDavSettings(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (_) => const _WebDavSettingsSheet(),
+    );
+  }
 }
 
 class _ModeSelector extends StatelessWidget {
