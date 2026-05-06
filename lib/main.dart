@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
 import 'app_controller.dart';
@@ -81,7 +82,7 @@ class _TomatoAppState extends State<TomatoApp> {
   }
 }
 
-const _shelfSeedColor = Color(0xFF7B5A44);
+const _shelfSeedColor = Color(0xFF646464);
 const _dockHeight = 58.0;
 const _dockBottomMargin = 14.0;
 const _dockHorizontalMargin = 24.0;
@@ -95,27 +96,46 @@ double _actionsBottom(BuildContext context) {
   return _dockBottom(context) + _dockHeight + _actionDockGap;
 }
 
+const _localBackupSuccessMessageToken = 'LOCAL_BACKUP_SUCCESS';
+
 ThemeData _buildAppTheme(Brightness brightness) {
-  final scheme = ColorScheme.fromSeed(
+  final baseScheme = ColorScheme.fromSeed(
     seedColor: _shelfSeedColor,
     brightness: brightness,
   );
   final dark = brightness == Brightness.dark;
+  final scheme = baseScheme.copyWith(
+    primary: dark ? const Color(0xFFD0D0D0) : const Color(0xFF4C4C4C),
+    onPrimary: dark ? const Color(0xFF1E1E1E) : const Color(0xFFFFFFFF),
+    primaryContainer: dark ? const Color(0xFF3A3A3A) : const Color(0xFFDADADA),
+    onPrimaryContainer: dark
+        ? const Color(0xFFECECEC)
+        : const Color(0xFF2A2A2A),
+    secondary: dark ? const Color(0xFFBDBDBD) : const Color(0xFF5B5B5B),
+    onSecondary: dark ? const Color(0xFF1F1F1F) : const Color(0xFFFFFFFF),
+    surface: dark ? const Color(0xFF1E1E1E) : const Color(0xFFF7F7F7),
+    surfaceContainerHighest: dark
+        ? const Color(0xFF2B2B2B)
+        : const Color(0xFFE7E7E7),
+    onSurfaceVariant: dark ? const Color(0xFFBFBFBF) : const Color(0xFF555555),
+    outlineVariant: dark ? const Color(0xFF444444) : const Color(0xFFC8C8C8),
+    surfaceTint: Colors.transparent,
+  );
   return ThemeData(
     useMaterial3: true,
     colorScheme: scheme,
     scaffoldBackgroundColor: dark
-        ? const Color(0xFF15120F)
-        : const Color(0xFFF6F0E8),
+        ? const Color(0xFF151515)
+        : const Color(0xFFF1F1F1),
     cardTheme: CardThemeData(
       elevation: 0,
-      color: dark ? const Color(0xFF211D18) : const Color(0xFFFFFBF6),
+      color: dark ? const Color(0xFF1F1F1F) : const Color(0xFFFAFAFA),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.all(Radius.circular(8)),
       ),
     ),
     bottomSheetTheme: BottomSheetThemeData(
-      backgroundColor: dark ? const Color(0xFF211D18) : const Color(0xFFFFFBF6),
+      backgroundColor: dark ? const Color(0xFF1F1F1F) : const Color(0xFFFAFAFA),
     ),
   );
 }
@@ -133,10 +153,9 @@ ThemeMode _flutterThemeMode(AppThemeMode mode) {
 
 void _syncSystemUi(
   BuildContext context,
-  TimerMode mode, {
+  Color background, {
   required bool immersive,
 }) {
-  final background = _modePalette(mode).backgroundFor(context);
   final backgroundBrightness = ThemeData.estimateBrightnessForColor(background);
   final iconBrightness = backgroundBrightness == Brightness.dark
       ? Brightness.light
@@ -158,6 +177,17 @@ void _syncSystemUi(
       systemNavigationBarContrastEnforced: false,
     ),
   );
+}
+
+Color _pageBackground({
+  required BuildContext context,
+  required int selectedIndex,
+  required TimerMode timerMode,
+}) {
+  if (selectedIndex == 0) {
+    return _modePalette(timerMode).backgroundFor(context);
+  }
+  return Theme.of(context).scaffoldBackgroundColor;
 }
 
 class AppScope extends InheritedNotifier<AppController> {
@@ -201,11 +231,18 @@ class _TomatoHomePageState extends State<TomatoHomePage>
   bool _pipTransitioning = false;
   bool _returningFromPictureInPicture = false;
   bool _ignoreNextQuietTap = false;
+  bool _notificationPermissionChecked = false;
+  bool _notificationPromptVisible = false;
   bool? _lastKeepScreenOnSent;
   bool? _lastPipEnabledSent;
   String? _lastPipTitleSent;
   String? _lastPipSubtitleSent;
   bool? _lastPipKeepScreenOnSent;
+  bool? _lastNotificationEnabledSent;
+  String? _lastNotificationTitleSent;
+  String? _lastNotificationSubtitleSent;
+  int? _lastNotificationTotalSecondsSent;
+  int? _lastNotificationRemainingSecondsSent;
 
   @override
   void initState() {
@@ -233,6 +270,7 @@ class _TomatoHomePageState extends State<TomatoHomePage>
     _controller?.addListener(_handleControllerChanged);
     _syncIdleChrome();
     _syncPlatformControls();
+    _requestNotificationPermissionIfNeeded();
   }
 
   @override
@@ -243,6 +281,15 @@ class _TomatoHomePageState extends State<TomatoHomePage>
     _pipChromeRestoreTimer?.cancel();
     _pipReturnTimer?.cancel();
     unawaited(PlatformControls.setKeepScreenOn(false));
+    unawaited(
+      PlatformControls.setTimerNotification(
+        enabled: false,
+        title: '',
+        subtitle: '',
+        totalSeconds: 1,
+        remainingSeconds: 1,
+      ),
+    );
     unawaited(
       PlatformControls.setPipState(
         enabled: false,
@@ -257,10 +304,14 @@ class _TomatoHomePageState extends State<TomatoHomePage>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.inactive ||
+    if (state == AppLifecycleState.hidden ||
         state == AppLifecycleState.paused) {
       unawaited(_controller?.syncBeforeBackground() ?? Future<void>.value());
-      _prepareForPictureInPicture();
+      final controller = _controller;
+      if (controller != null &&
+          controller.data.settings.pictureInPictureEnabled) {
+        _prepareForPictureInPicture();
+      }
     } else if (state == AppLifecycleState.resumed &&
         (_inPictureInPicture || _pipTransitioning)) {
       _beginPictureInPictureReturn();
@@ -278,6 +329,38 @@ class _TomatoHomePageState extends State<TomatoHomePage>
     if (message == null || !mounted) {
       return;
     }
+    if (message == _localBackupSuccessMessageToken) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) {
+          return;
+        }
+        final controller = _controller;
+        if (controller == null) {
+          return;
+        }
+        final path = controller.lastLocalBackupPath ?? '';
+        showDialog<void>(
+          context: context,
+          builder: (context) {
+            return AlertDialog(
+              title: const Text('本地备份完成'),
+              content: Text(
+                path.isEmpty ? '本地备份已保存。' : '本地备份已保存到：\n$path',
+                maxLines: 4,
+                overflow: TextOverflow.ellipsis,
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('确定'),
+                ),
+              ],
+            );
+          },
+        );
+      });
+      return;
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) {
         return;
@@ -286,6 +369,41 @@ class _TomatoHomePageState extends State<TomatoHomePage>
         ..hideCurrentSnackBar()
         ..showSnackBar(SnackBar(content: Text(message)));
     });
+  }
+
+  Future<void> _requestNotificationPermissionIfNeeded() async {
+    if (_notificationPermissionChecked || _notificationPromptVisible) {
+      return;
+    }
+    _notificationPermissionChecked = true;
+    final granted = await PlatformControls.requestNotificationPermission();
+    if (granted || !mounted) {
+      return;
+    }
+    _notificationPromptVisible = true;
+    final shouldOpenSettings = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('通知权限未开启'),
+          content: const Text('后台进度通知需要通知权限，请在系统设置中允许通知。'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('暂不'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('去设置'),
+            ),
+          ],
+        );
+      },
+    );
+    _notificationPromptVisible = false;
+    if (shouldOpenSettings == true) {
+      await PlatformControls.openNotificationSettings();
+    }
   }
 
   @override
@@ -298,9 +416,14 @@ class _TomatoHomePageState extends State<TomatoHomePage>
         (_chromeHidden || pipPreview) &&
         _selectedIndex == 0 &&
         timer.phase == TimerPhase.running;
+    final pageBackground = _pageBackground(
+      context: context,
+      selectedIndex: _selectedIndex,
+      timerMode: timer.mode,
+    );
     final settingsSubPageActive = _selectedIndex == 2 && _settingsSubPageOpen;
     final statsSubPageActive = _selectedIndex == 1 && _statsSubPageOpen;
-    _syncSystemUi(context, timer.mode, immersive: hideChrome);
+    _syncSystemUi(context, pageBackground, immersive: hideChrome);
 
     return Listener(
       behavior: HitTestBehavior.translucent,
@@ -310,7 +433,7 @@ class _TomatoHomePageState extends State<TomatoHomePage>
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeOutCubic,
-        color: _modePalette(timer.mode).backgroundFor(context),
+        color: pageBackground,
         child: Scaffold(
           backgroundColor: Colors.transparent,
           extendBody: true,
@@ -328,6 +451,7 @@ class _TomatoHomePageState extends State<TomatoHomePage>
                               expandFromPictureInPicture: false,
                             )
                           : SafeArea(
+                              top: true,
                               bottom: false,
                               child: _pageTransition(
                                 controller: controller,
@@ -339,7 +463,9 @@ class _TomatoHomePageState extends State<TomatoHomePage>
                               ),
                             ),
                     ),
-                    if (!pipPreview && !settingsSubPageActive && !statsSubPageActive)
+                    if (!pipPreview &&
+                        !settingsSubPageActive &&
+                        !statsSubPageActive)
                       _FloatingDock(
                         hidden: hideChrome,
                         selectedIndex: _selectedIndex,
@@ -395,7 +521,7 @@ class _TomatoHomePageState extends State<TomatoHomePage>
           inPictureInPicture: inPictureInPicture,
           expandFromPictureInPicture: expandFromPictureInPicture,
           onRequestQuiet: _requestQuiet,
-          onEnterPictureInPicture: _enterPictureInPicture,
+          onTogglePictureInPicture: _togglePictureInPicture,
         );
       case 1:
         return _StatsPage(
@@ -416,7 +542,7 @@ class _TomatoHomePageState extends State<TomatoHomePage>
           inPictureInPicture: inPictureInPicture,
           expandFromPictureInPicture: expandFromPictureInPicture,
           onRequestQuiet: _requestQuiet,
-          onEnterPictureInPicture: _enterPictureInPicture,
+          onTogglePictureInPicture: _togglePictureInPicture,
         );
     }
   }
@@ -476,15 +602,11 @@ class _TomatoHomePageState extends State<TomatoHomePage>
     });
   }
 
-  void _enterPictureInPicture() {
-    _prepareForPictureInPicture();
-    unawaited(PlatformControls.enterPictureInPicture());
-  }
-
   void _prepareForPictureInPicture() {
     final controller = _controller;
     if (controller == null ||
         controller.data.timer.phase != TimerPhase.running ||
+        !controller.data.settings.pictureInPictureEnabled ||
         !mounted) {
       return;
     }
@@ -501,6 +623,34 @@ class _TomatoHomePageState extends State<TomatoHomePage>
       _pipTransitioning = true;
       _returningFromPictureInPicture = false;
     });
+  }
+
+  void _togglePictureInPicture(bool enabled) {
+    final controller = _controller;
+    if (controller == null) {
+      return;
+    }
+    final settings = controller.data.settings;
+    if (settings.pictureInPictureEnabled == enabled) {
+      return;
+    }
+    unawaited(
+      controller.updateSettings(
+        settings.copyWith(pictureInPictureEnabled: enabled),
+      ),
+    );
+    if (!enabled) {
+      _pipTransitioning = false;
+      _inPictureInPicture = false;
+      unawaited(
+        PlatformControls.setPipState(
+          enabled: false,
+          title: '',
+          subtitle: '',
+          keepScreenOn: settings.keepScreenOnEnabled,
+        ),
+      );
+    }
   }
 
   void _handleUserActivity() {
@@ -572,12 +722,13 @@ class _TomatoHomePageState extends State<TomatoHomePage>
     }
     final timer = controller.data.timer;
     final keepScreenOn = controller.data.settings.keepScreenOnEnabled;
+    final pipSwitchEnabled = controller.data.settings.pictureInPictureEnabled;
     if (_lastKeepScreenOnSent != keepScreenOn) {
       _lastKeepScreenOnSent = keepScreenOn;
       unawaited(PlatformControls.setKeepScreenOn(keepScreenOn));
     }
 
-    final pipEnabled = timer.phase == TimerPhase.running;
+    final pipEnabled = pipSwitchEnabled && timer.phase == TimerPhase.running;
     final pipTitle = formatClock(timer.remainingSeconds);
     final pipSubtitle = timer.mode.label;
     final pipNeedsTitleRefresh = _inPictureInPicture || _pipTransitioning;
@@ -587,19 +738,48 @@ class _TomatoHomePageState extends State<TomatoHomePage>
         _lastPipKeepScreenOnSent != keepScreenOn ||
         _lastPipTitleSent == null ||
         (pipNeedsTitleRefresh && _lastPipTitleSent != pipTitle);
-    if (!shouldSendPipState) {
+    if (shouldSendPipState) {
+      _lastPipEnabledSent = pipEnabled;
+      _lastPipTitleSent = pipTitle;
+      _lastPipSubtitleSent = pipSubtitle;
+      _lastPipKeepScreenOnSent = keepScreenOn;
+      unawaited(
+        PlatformControls.setPipState(
+          enabled: pipEnabled,
+          title: pipTitle,
+          subtitle: pipSubtitle,
+          keepScreenOn: keepScreenOn,
+        ),
+      );
+    }
+
+    final notificationEnabled =
+        timer.phase == TimerPhase.running && !pipSwitchEnabled;
+    final notificationTitle = formatClock(timer.remainingSeconds);
+    final notificationSubtitle = timer.mode.label;
+    final notificationTotalSeconds = timer.totalSeconds;
+    final notificationRemainingSeconds = timer.remainingSeconds;
+    final shouldSendNotification =
+        _lastNotificationEnabledSent != notificationEnabled ||
+        _lastNotificationTitleSent != notificationTitle ||
+        _lastNotificationSubtitleSent != notificationSubtitle ||
+        _lastNotificationTotalSecondsSent != notificationTotalSeconds ||
+        _lastNotificationRemainingSecondsSent != notificationRemainingSeconds;
+    if (!shouldSendNotification) {
       return;
     }
-    _lastPipEnabledSent = pipEnabled;
-    _lastPipTitleSent = pipTitle;
-    _lastPipSubtitleSent = pipSubtitle;
-    _lastPipKeepScreenOnSent = keepScreenOn;
+    _lastNotificationEnabledSent = notificationEnabled;
+    _lastNotificationTitleSent = notificationTitle;
+    _lastNotificationSubtitleSent = notificationSubtitle;
+    _lastNotificationTotalSecondsSent = notificationTotalSeconds;
+    _lastNotificationRemainingSecondsSent = notificationRemainingSeconds;
     unawaited(
-      PlatformControls.setPipState(
-        enabled: pipEnabled,
-        title: pipTitle,
-        subtitle: pipSubtitle,
-        keepScreenOn: keepScreenOn,
+      PlatformControls.setTimerNotification(
+        enabled: notificationEnabled,
+        title: notificationTitle,
+        subtitle: notificationSubtitle,
+        totalSeconds: notificationTotalSeconds,
+        remainingSeconds: notificationRemainingSeconds,
       ),
     );
   }
@@ -687,7 +867,7 @@ class _TimerPage extends StatelessWidget {
     required this.inPictureInPicture,
     required this.expandFromPictureInPicture,
     required this.onRequestQuiet,
-    required this.onEnterPictureInPicture,
+    required this.onTogglePictureInPicture,
   });
 
   final AppController controller;
@@ -696,7 +876,7 @@ class _TimerPage extends StatelessWidget {
   final bool inPictureInPicture;
   final bool expandFromPictureInPicture;
   final VoidCallback onRequestQuiet;
-  final VoidCallback onEnterPictureInPicture;
+  final ValueChanged<bool> onTogglePictureInPicture;
 
   @override
   Widget build(BuildContext context) {
@@ -761,6 +941,7 @@ class _TimerPage extends StatelessWidget {
                     mode: timer.mode,
                     phase: timer.phase,
                     keepScreenOn: settings.keepScreenOnEnabled,
+                    pictureInPictureEnabled: settings.pictureInPictureEnabled,
                     onToggleKeepScreenOn: () {
                       controller.updateSettings(
                         settings.copyWith(
@@ -768,7 +949,7 @@ class _TimerPage extends StatelessWidget {
                         ),
                       );
                     },
-                    onEnterPictureInPicture: onEnterPictureInPicture,
+                    onTogglePictureInPicture: onTogglePictureInPicture,
                   ),
                 ),
               ),
@@ -881,18 +1062,40 @@ class _DockItem extends StatefulWidget {
 class _DockItemState extends State<_DockItem> {
   bool _pressed = false;
 
+  void _setPressed(bool value) {
+    if (!mounted || _pressed == value) {
+      return;
+    }
+    final schedulerPhase = SchedulerBinding.instance.schedulerPhase;
+    if (schedulerPhase == SchedulerPhase.persistentCallbacks ||
+        schedulerPhase == SchedulerPhase.postFrameCallbacks) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _pressed == value) {
+          return;
+        }
+        setState(() => _pressed = value);
+      });
+      return;
+    }
+    setState(() => _pressed = value);
+  }
+
   void _handleTapDown(TapDownDetails details) {
     if (widget.selected) return;
-    if (!_pressed) setState(() => _pressed = true);
-    widget.onTap();
+    _setPressed(true);
   }
 
   void _handleTapUp(TapUpDetails details) {
-    if (_pressed) setState(() => _pressed = false);
+    _setPressed(false);
   }
 
   void _handleTapCancel() {
-    if (_pressed) setState(() => _pressed = false);
+    _setPressed(false);
+  }
+
+  void _handleTap() {
+    if (widget.selected) return;
+    widget.onTap();
   }
 
   @override
@@ -913,6 +1116,7 @@ class _DockItemState extends State<_DockItem> {
             onTapDown: selected ? null : _handleTapDown,
             onTapUp: selected ? null : _handleTapUp,
             onTapCancel: selected ? null : _handleTapCancel,
+            onTap: selected ? null : _handleTap,
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 70),
               curve: Curves.easeOutCubic,
@@ -1422,9 +1626,9 @@ class _SettingsPageState extends State<_SettingsPage> {
                 Expanded(
                   child: Text(
                     title,
-                    style: Theme.of(
-                      context,
-                    ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600),
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
@@ -1465,7 +1669,7 @@ class _SettingsSubPageScaffold extends StatelessWidget {
     final bottom = MediaQuery.viewInsetsOf(context).bottom;
     return Center(
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 720),
+        constraints: const BoxConstraints(maxWidth: 760),
         child: ListView.separated(
           padding: EdgeInsets.fromLTRB(20, 2, 20, 32 + bottom),
           itemBuilder: (context, index) => children[index],
@@ -1493,7 +1697,7 @@ class _SettingsSection extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     return Card(
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
+        padding: const EdgeInsets.symmetric(vertical: 6),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1543,10 +1747,6 @@ class _BackupContent extends StatelessWidget {
     final status = controller.syncing
         ? '正在同步'
         : controller.lastSyncError ?? _lastSyncLabel(lastSyncAt);
-    final backupStatus = _localBackupStatus(controller);
-    final backupStatusColor = controller.lastLocalBackupError == null
-        ? scheme.onSurfaceVariant
-        : scheme.error;
 
     return _SettingsSubPageScaffold(
       children: [
@@ -1582,15 +1782,6 @@ class _BackupContent extends StatelessWidget {
                         ? scheme.onSurfaceVariant
                         : scheme.error,
                   ),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  backupStatus,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodyMedium?.copyWith(color: backupStatusColor),
                 ),
                 const SizedBox(height: 16),
                 Wrap(
@@ -1651,23 +1842,6 @@ class _BackupContent extends StatelessWidget {
               },
             ),
           ],
-        ),
-        Card(
-          child: ListTile(
-            leading: Icon(
-              settings.webDav.isConfigured
-                  ? Icons.cloud_done_outlined
-                  : Icons.cloud_off_outlined,
-            ),
-            title: const Text('WebDAV'),
-            subtitle: Text(
-              settings.webDav.isConfigured
-                  ? settings.webDav.remotePath
-                  : '未配置远端备份',
-            ),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: onOpenWebDav,
-          ),
         ),
       ],
     );
@@ -1750,6 +1924,10 @@ class _LocalBackupCardState extends State<_LocalBackupCard> {
   @override
   Widget build(BuildContext context) {
     final settings = widget.settings;
+    final localStatus = widget.controller.localBackupStatusLabel();
+    final localStatusColor = widget.controller.lastLocalBackupError == null
+        ? Theme.of(context).colorScheme.onSurfaceVariant
+        : Theme.of(context).colorScheme.error;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(18),
@@ -1775,6 +1953,15 @@ class _LocalBackupCardState extends State<_LocalBackupCard> {
                   label: const Text('立即备份'),
                 ),
               ],
+            ),
+            const SizedBox(height: 10),
+            Text(
+              localStatus,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: localStatusColor),
             ),
             const SizedBox(height: 14),
             Row(
@@ -1827,9 +2014,7 @@ class _LocalBackupCardState extends State<_LocalBackupCard> {
                 suffix: '分钟',
                 onChanged: (value) {
                   widget.controller.updateSettings(
-                    settings.copyWith(
-                      localBackupAutoIntervalMinutes: value,
-                    ),
+                    settings.copyWith(localBackupAutoIntervalMinutes: value),
                   );
                 },
               ),
@@ -2287,7 +2472,7 @@ class PipTimerBox extends StatelessWidget {
         );
         final safeShortest = math.max(96.0, shortest);
         final outerPadding = (safeShortest * 0.07).clamp(8.0, 18.0).toDouble();
-        final ringDimension = (safeShortest * 0.80)
+        final ringDimension = (safeShortest * 0.64)
             .clamp(86.0, 220.0)
             .toDouble();
 
@@ -2316,16 +2501,18 @@ class _TimerActions extends StatelessWidget {
     required this.mode,
     required this.phase,
     required this.keepScreenOn,
+    required this.pictureInPictureEnabled,
     required this.onToggleKeepScreenOn,
-    required this.onEnterPictureInPicture,
+    required this.onTogglePictureInPicture,
   });
 
   final AppController controller;
   final TimerMode mode;
   final TimerPhase phase;
   final bool keepScreenOn;
+  final bool pictureInPictureEnabled;
   final VoidCallback onToggleKeepScreenOn;
-  final VoidCallback onEnterPictureInPicture;
+  final ValueChanged<bool> onTogglePictureInPicture;
 
   @override
   Widget build(BuildContext context) {
@@ -2418,11 +2605,18 @@ class _TimerActions extends StatelessWidget {
                     const SizedBox(width: 6),
                     _ActionIconButton(
                       size: iconSize,
-                      tooltip: '进入画中画',
+                      tooltip: pictureInPictureEnabled
+                          ? '关闭画中画自动进入'
+                          : '开启画中画自动进入',
+                      selected: pictureInPictureEnabled,
                       onPressed: phase == TimerPhase.running
-                          ? onEnterPictureInPicture
+                          ? () => onTogglePictureInPicture(
+                              !pictureInPictureEnabled,
+                            )
                           : null,
-                      icon: Icons.picture_in_picture_alt_outlined,
+                      icon: pictureInPictureEnabled
+                          ? Icons.picture_in_picture_alt
+                          : Icons.picture_in_picture_alt_outlined,
                     ),
                     const SizedBox(width: 6),
                     _ActionIconButton(
@@ -2459,16 +2653,52 @@ class _ActionIconButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return IconButton.filledTonal(
       tooltip: tooltip,
       isSelected: selected,
       onPressed: onPressed,
-      style: IconButton.styleFrom(
-        fixedSize: Size.square(size),
-        minimumSize: Size.square(size),
-        padding: EdgeInsets.zero,
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      ),
+      style:
+          IconButton.styleFrom(
+            foregroundColor: scheme.onSurfaceVariant,
+            backgroundColor: scheme.surfaceContainerHighest,
+            disabledBackgroundColor: scheme.surfaceContainerHighest.withAlpha(
+              128,
+            ),
+            disabledForegroundColor: scheme.onSurfaceVariant.withAlpha(130),
+            overlayColor: scheme.primary.withAlpha(20),
+            highlightColor: Colors.transparent,
+            splashFactory: InkRipple.splashFactory,
+            fixedSize: Size.square(size),
+            minimumSize: Size.square(size),
+            padding: EdgeInsets.zero,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ).copyWith(
+            backgroundColor: WidgetStateProperty.resolveWith((states) {
+              if (states.contains(WidgetState.disabled)) {
+                return scheme.surfaceContainerHighest.withAlpha(128);
+              }
+              if (states.contains(WidgetState.selected)) {
+                return scheme.primary.withAlpha(22);
+              }
+              return scheme.surfaceContainerHighest;
+            }),
+            foregroundColor: WidgetStateProperty.resolveWith((states) {
+              if (states.contains(WidgetState.disabled)) {
+                return scheme.onSurfaceVariant.withAlpha(130);
+              }
+              if (states.contains(WidgetState.selected)) {
+                return scheme.primary;
+              }
+              return scheme.onSurfaceVariant;
+            }),
+            side: WidgetStateProperty.resolveWith((states) {
+              if (states.contains(WidgetState.selected)) {
+                return BorderSide(color: scheme.primary.withAlpha(56));
+              }
+              return BorderSide(color: scheme.outlineVariant.withAlpha(120));
+            }),
+          ),
       icon: Icon(icon, size: 20),
     );
   }
@@ -2482,53 +2712,31 @@ class _TodayStats extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final today = dateKey(DateTime.now());
-    final todayFocusSessions = data.sessions
-        .where((session) => session.isRecordable && session.dayKey == today)
-        .toList();
-    final todaySeconds = todayFocusSessions.fold<int>(
-      0,
-      (total, session) => total + session.focusedSeconds,
-    );
+    final byDay = data.focusSecondsByDay();
+    final todaySeconds = byDay[today] ?? 0;
+    final totalSeconds = data.totalFocusSeconds;
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final narrow = constraints.maxWidth < 560;
-        final cards = [
-          _StatCard(
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: _StatCard(
             icon: Icons.timer_outlined,
             label: '今日专注',
             value: formatHours(todaySeconds),
             detail: '累计时长',
           ),
-          _StatCard(
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _StatCard(
             icon: Icons.all_inclusive,
             label: '总专注',
-            value: formatHours(data.totalFocusSeconds),
+            value: formatHours(totalSeconds),
             detail: '历史累计',
           ),
-        ];
-        if (narrow) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              for (var index = 0; index < cards.length; index++) ...[
-                cards[index],
-                if (index != cards.length - 1) const SizedBox(height: 12),
-              ],
-            ],
-          );
-        }
-
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            for (var index = 0; index < cards.length; index++) ...[
-              Expanded(child: cards[index]),
-              if (index != cards.length - 1) const SizedBox(width: 12),
-            ],
-          ],
-        );
-      },
+        ),
+      ],
     );
   }
 }
@@ -2562,10 +2770,26 @@ class _StatCard extends StatelessWidget {
                 children: [
                   Text(label, style: theme.textTheme.labelLarge),
                   const SizedBox(height: 6),
-                  Text(
-                    value,
-                    style: theme.textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 240),
+                    switchInCurve: Curves.easeOutCubic,
+                    switchOutCurve: Curves.easeInCubic,
+                    transitionBuilder: (child, animation) {
+                      final offset = Tween<Offset>(
+                        begin: const Offset(0, 0.18),
+                        end: Offset.zero,
+                      ).animate(animation);
+                      return FadeTransition(
+                        opacity: animation,
+                        child: SlideTransition(position: offset, child: child),
+                      );
+                    },
+                    child: Text(
+                      value,
+                      key: ValueKey(value),
+                      style: theme.textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
                   Text(
@@ -2690,6 +2914,19 @@ class _TimerSettingsContent extends StatelessWidget {
               },
             ),
             NumberStepper(
+              icon: Icons.autorenew,
+              label: '本轮循环次数',
+              value: settings.focusCyclesPerRun,
+              min: 1,
+              max: 48,
+              suffix: '次',
+              onChanged: (value) {
+                controller.updateSettings(
+                  settings.copyWith(focusCyclesPerRun: value),
+                );
+              },
+            ),
+            NumberStepper(
               icon: Icons.visibility_off_outlined,
               label: '静默显示',
               value: settings.idleFocusSeconds,
@@ -2719,35 +2956,36 @@ class _FeedbackSettingsContent extends StatelessWidget {
 
     return _SettingsSubPageScaffold(
       children: [
-        _SettingsSection(
-          icon: Icons.notifications_active_outlined,
-          title: '阶段切换',
-          children: [
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              secondary: const Icon(Icons.vibration),
-              title: const Text('切换震动'),
-              subtitle: const Text('进入休息时使用长振动，其余切换使用强提醒'),
-              value: settings.completionHapticsEnabled,
-              onChanged: (value) {
-                controller.updateSettings(
-                  settings.copyWith(completionHapticsEnabled: value),
-                );
-              },
-            ),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              secondary: const Icon(Icons.notifications_active_outlined),
-              title: const Text('切换音效'),
-              subtitle: const Text('默认关闭，避免打扰；需要时可手动开启'),
-              value: settings.completionSoundEnabled,
-              onChanged: (value) {
-                controller.updateSettings(
-                  settings.copyWith(completionSoundEnabled: value),
-                );
-              },
-            ),
-          ],
+        Card(
+          child: Column(
+            children: [
+              SwitchListTile(
+                contentPadding: const EdgeInsets.fromLTRB(16, 4, 12, 4),
+                secondary: const Icon(Icons.vibration),
+                title: const Text('切换震动'),
+                subtitle: const Text('进入休息时使用长振动，其余切换使用强提醒'),
+                value: settings.completionHapticsEnabled,
+                onChanged: (value) {
+                  controller.updateSettings(
+                    settings.copyWith(completionHapticsEnabled: value),
+                  );
+                },
+              ),
+              const Divider(height: 1, indent: 56),
+              SwitchListTile(
+                contentPadding: const EdgeInsets.fromLTRB(16, 4, 12, 4),
+                secondary: const Icon(Icons.notifications_active_outlined),
+                title: const Text('切换音效'),
+                subtitle: const Text('默认关闭，避免打扰；需要时可手动开启'),
+                value: settings.completionSoundEnabled,
+                onChanged: (value) {
+                  controller.updateSettings(
+                    settings.copyWith(completionSoundEnabled: value),
+                  );
+                },
+              ),
+            ],
+          ),
         ),
       ],
     );
@@ -2764,35 +3002,53 @@ class _AppearanceSettingsContent extends StatelessWidget {
 
     return _SettingsSubPageScaffold(
       children: [
-        _SettingsSection(
-          icon: Icons.palette_outlined,
-          title: '主题',
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(6, 10, 6, 12),
-              child: SizedBox(
-                width: double.infinity,
-                child: SegmentedButton<AppThemeMode>(
-                  showSelectedIcon: false,
-                  segments: AppThemeMode.values
-                      .map(
-                        (mode) => ButtonSegment<AppThemeMode>(
-                          value: mode,
-                          icon: Icon(_themeModeIcon(mode)),
-                          label: Text(mode.label),
-                        ),
-                      )
-                      .toList(),
-                  selected: {settings.themeMode},
-                  onSelectionChanged: (values) {
-                    controller.updateSettings(
-                      settings.copyWith(themeMode: values.single),
-                    );
-                  },
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.palette_outlined,
+                      size: 20,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      '主题',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
                 ),
-              ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: SegmentedButton<AppThemeMode>(
+                    showSelectedIcon: false,
+                    segments: AppThemeMode.values
+                        .map(
+                          (mode) => ButtonSegment<AppThemeMode>(
+                            value: mode,
+                            icon: Icon(_themeModeIcon(mode)),
+                            label: Text(mode.label),
+                          ),
+                        )
+                        .toList(),
+                    selected: {settings.themeMode},
+                    onSelectionChanged: (values) {
+                      controller.updateSettings(
+                        settings.copyWith(themeMode: values.single),
+                      );
+                    },
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ],
     );
@@ -3026,7 +3282,6 @@ class _NumberStepperState extends State<NumberStepper> {
     }
   }
 
-
   void _showSavedFeedback() {
     unawaited(HapticFeedback.selectionClick());
     _feedbackTimer?.cancel();
@@ -3083,7 +3338,8 @@ class _NumberStepperState extends State<NumberStepper> {
                 baseOffset: 0,
                 extentOffset: _controller.text.length,
               ),
-              onSubmitted: (_) => _commitInput(showFeedback: true, unfocus: true),
+              onSubmitted: (_) =>
+                  _commitInput(showFeedback: true, unfocus: true),
             ),
           ),
           const SizedBox(width: 6),
@@ -3141,18 +3397,6 @@ String _lastSyncLabel(DateTime? value) {
   return '上次同步 ${formatDateTime(value)}';
 }
 
-String _localBackupStatus(AppController controller) {
-  final error = controller.lastLocalBackupError;
-  if (error != null) {
-    return error;
-  }
-  final path = controller.lastLocalBackupPath;
-  if (path == null) {
-    return '本地备份尚未创建';
-  }
-  return '本地备份已保存 ${formatDateTime(controller.lastLocalBackupAt!)} · $path';
-}
-
 String _phaseLabel(TimerPhase phase) {
   switch (phase) {
     case TimerPhase.idle:
@@ -3203,21 +3447,21 @@ _StagePalette _modePalette(TimerMode mode) {
   switch (mode) {
     case TimerMode.focus:
       return const _StagePalette(
-        accent: Color(0xFF8E3F2E),
-        lightBackground: Color(0xFFF6EDE7),
-        darkBackground: Color(0xFF241713),
+        accent: Color(0xFFB15E52),
+        lightBackground: Color(0xFFEFEAEC),
+        darkBackground: Color(0xFF171416),
       );
     case TimerMode.shortBreak:
       return const _StagePalette(
-        accent: Color(0xFF2F7D57),
-        lightBackground: Color(0xFFEAF4ED),
-        darkBackground: Color(0xFF102117),
+        accent: Color(0xFF3D8A5D),
+        lightBackground: Color(0xFFE9EFEB),
+        darkBackground: Color(0xFF141916),
       );
     case TimerMode.longBreak:
       return const _StagePalette(
-        accent: Color(0xFF236A91),
-        lightBackground: Color(0xFFE8F1F7),
-        darkBackground: Color(0xFF0F1D27),
+        accent: Color(0xFF3D79A8),
+        lightBackground: Color(0xFFE8ECF2),
+        darkBackground: Color(0xFF14191E),
       );
   }
 }

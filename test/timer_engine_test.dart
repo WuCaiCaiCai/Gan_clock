@@ -13,15 +13,19 @@ void main() {
     expect(settings.idleFocusSeconds, 30);
     expect(settings.themeMode, AppThemeMode.system);
     expect(settings.keepScreenOnEnabled, isFalse);
+    expect(settings.pictureInPictureEnabled, isTrue);
     expect(settings.backupAutoSyncEnabled, isTrue);
     expect(settings.backupAutoSyncIntervalMinutes, 30);
+    expect(settings.focusCyclesPerRun, 4);
     expect(AppSettings.fromJson(const {}).completionSoundEnabled, isFalse);
     expect(AppSettings.fromJson(const {}).completionHapticsEnabled, isTrue);
     expect(AppSettings.fromJson(const {}).idleFocusSeconds, 30);
     expect(AppSettings.fromJson(const {}).themeMode, AppThemeMode.system);
     expect(AppSettings.fromJson(const {}).keepScreenOnEnabled, isFalse);
+    expect(AppSettings.fromJson(const {}).pictureInPictureEnabled, isTrue);
     expect(AppSettings.fromJson(const {}).backupAutoSyncEnabled, isTrue);
     expect(AppSettings.fromJson(const {}).backupAutoSyncIntervalMinutes, 30);
+    expect(AppSettings.fromJson(const {}).focusCyclesPerRun, 4);
     expect(
       AppSettings.fromJson(const {'darkModeEnabled': true}).themeMode,
       AppThemeMode.dark,
@@ -255,8 +259,10 @@ void main() {
   test('settings serialize completion feedback switches', () {
     final settings = const AppSettings(
       idleFocusSeconds: 75,
+      focusCyclesPerRun: 6,
       themeMode: AppThemeMode.dark,
       keepScreenOnEnabled: true,
+      pictureInPictureEnabled: false,
       completionSoundEnabled: false,
       completionHapticsEnabled: false,
       backupAutoSyncEnabled: false,
@@ -267,12 +273,41 @@ void main() {
     final decoded = AppSettings.fromJson(settings.toJson());
 
     expect(decoded.idleFocusSeconds, 75);
+    expect(decoded.focusCyclesPerRun, 6);
     expect(decoded.themeMode, AppThemeMode.dark);
+    expect(decoded.pictureInPictureEnabled, isFalse);
     expect(decoded.keepScreenOnEnabled, isTrue);
     expect(decoded.completionSoundEnabled, isFalse);
     expect(decoded.completionHapticsEnabled, isFalse);
     expect(decoded.backupAutoSyncEnabled, isFalse);
     expect(decoded.backupAutoSyncIntervalMinutes, 45);
     expect(decoded.localBackupDirectory, '/tmp/gan_backups');
+  });
+
+  test('stops automatically after reaching configured focus cycles', () {
+    final start = DateTime(2026, 1, 1, 9);
+    final settings = const AppSettings(focusCyclesPerRun: 1);
+    final data = TomatoData.initial().copyWith(
+      settings: settings,
+      timer:
+          const TimerSnapshot(
+            mode: TimerMode.focus,
+            phase: TimerPhase.running,
+            totalSeconds: 1500,
+            remainingSeconds: 1,
+          ).copyWith(
+            startedAt: start,
+            endsAt: start.add(const Duration(seconds: 1)),
+          ),
+    );
+
+    final result = engine.tick(data, at: start.add(const Duration(seconds: 2)));
+
+    expect(result.completedMode, TimerMode.focus);
+    expect(result.data.timer.mode, TimerMode.focus);
+    expect(result.data.timer.phase, TimerPhase.idle);
+    expect(result.data.timer.remainingSeconds, 1500);
+    expect(result.data.timer.completedFocusCycles, 0);
+    expect(result.data.sessions, hasLength(1));
   });
 }

@@ -16,10 +16,10 @@ class SystemCompletionFeedback implements CompletionFeedback {
     if (!settings.completionHapticsEnabled) {
       return;
     }
-    // 短促双击：告知计时已开始
+    // 计时开始：明确双脉冲
     await PlatformControls.vibratePattern(
-      timingsMs: const [0, 120, 80, 220],
-      amplitudes: const [0, 200, 0, 255],
+      timingsMs: const [0, 180, 70, 280],
+      amplitudes: const [0, 255, 0, 255],
     );
   }
 
@@ -28,23 +28,22 @@ class SystemCompletionFeedback implements CompletionFeedback {
     final futures = <Future<void>>[];
     if (settings.completionHapticsEnabled) {
       if (completedMode == TimerMode.focus) {
-        // 专注结束 → 进入休息：持续长振动，让人放松下来
+        // 专注结束 → 进入休息：长振提示
         futures.add(
           PlatformControls.vibratePattern(
-            timingsMs: const [0, 1200, 200, 800],
-            amplitudes: const [0, 255, 0, 220],
+            timingsMs: const [0, 1200, 180, 900],
+            amplitudes: const [0, 255, 0, 255],
           ),
         );
       } else {
-        // 休息结束 → 回到专注：强节奏三段振动，把注意力拉回来
+        // 休息结束/跳过休息 → 回到专注：强节奏三段振动
         futures.add(
           PlatformControls.vibratePattern(
-            timingsMs: const [0, 600, 140, 600, 140, 900],
-            amplitudes: const [0, 235, 0, 245, 0, 255],
+            timingsMs: const [0, 350, 110, 350, 110, 520],
+            amplitudes: const [0, 255, 0, 255, 0, 255],
           ),
         );
       }
-      futures.add(HapticFeedback.heavyImpact());
     }
     if (settings.completionSoundEnabled) {
       futures.add(SystemSound.play(SystemSoundType.alert));

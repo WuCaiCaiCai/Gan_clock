@@ -135,9 +135,11 @@ class AppSettings {
     this.shortBreakMinutes = 5,
     this.longBreakMinutes = 15,
     this.roundsBeforeLongBreak = 4,
+    this.focusCyclesPerRun = 4,
     this.idleFocusSeconds = 30,
     this.themeMode = AppThemeMode.system,
     this.keepScreenOnEnabled = false,
+    this.pictureInPictureEnabled = true,
     this.completionSoundEnabled = false,
     this.completionHapticsEnabled = true,
     this.backupAutoSyncEnabled = true,
@@ -153,9 +155,11 @@ class AppSettings {
   final int shortBreakMinutes;
   final int longBreakMinutes;
   final int roundsBeforeLongBreak;
+  final int focusCyclesPerRun;
   final int idleFocusSeconds;
   final AppThemeMode themeMode;
   final bool keepScreenOnEnabled;
+  final bool pictureInPictureEnabled;
   final bool completionSoundEnabled;
   final bool completionHapticsEnabled;
   final bool backupAutoSyncEnabled;
@@ -171,9 +175,11 @@ class AppSettings {
     int? shortBreakMinutes,
     int? longBreakMinutes,
     int? roundsBeforeLongBreak,
+    int? focusCyclesPerRun,
     int? idleFocusSeconds,
     AppThemeMode? themeMode,
     bool? keepScreenOnEnabled,
+    bool? pictureInPictureEnabled,
     bool? completionSoundEnabled,
     bool? completionHapticsEnabled,
     bool? backupAutoSyncEnabled,
@@ -190,9 +196,12 @@ class AppSettings {
       longBreakMinutes: longBreakMinutes ?? this.longBreakMinutes,
       roundsBeforeLongBreak:
           roundsBeforeLongBreak ?? this.roundsBeforeLongBreak,
+      focusCyclesPerRun: focusCyclesPerRun ?? this.focusCyclesPerRun,
       idleFocusSeconds: idleFocusSeconds ?? this.idleFocusSeconds,
       themeMode: themeMode ?? this.themeMode,
       keepScreenOnEnabled: keepScreenOnEnabled ?? this.keepScreenOnEnabled,
+      pictureInPictureEnabled:
+          pictureInPictureEnabled ?? this.pictureInPictureEnabled,
       completionSoundEnabled:
           completionSoundEnabled ?? this.completionSoundEnabled,
       completionHapticsEnabled:
@@ -217,9 +226,11 @@ class AppSettings {
       'shortBreakMinutes': shortBreakMinutes,
       'longBreakMinutes': longBreakMinutes,
       'roundsBeforeLongBreak': roundsBeforeLongBreak,
+      'focusCyclesPerRun': focusCyclesPerRun,
       'idleFocusSeconds': idleFocusSeconds,
       'themeMode': themeMode.name,
       'keepScreenOnEnabled': keepScreenOnEnabled,
+      'pictureInPictureEnabled': pictureInPictureEnabled,
       'completionSoundEnabled': completionSoundEnabled,
       'completionHapticsEnabled': completionHapticsEnabled,
       'backupAutoSyncEnabled': backupAutoSyncEnabled,
@@ -246,12 +257,15 @@ class AppSettings {
         12,
         4,
       ),
+      focusCyclesPerRun: _boundedInt(value['focusCyclesPerRun'], 1, 48, 4),
       idleFocusSeconds: _boundedInt(value['idleFocusSeconds'], 5, 600, 30),
       themeMode: appThemeModeFromJson(
         value['themeMode'],
         legacyDarkMode: value['darkModeEnabled'] as bool?,
       ),
       keepScreenOnEnabled: value['keepScreenOnEnabled'] as bool? ?? false,
+      pictureInPictureEnabled:
+          value['pictureInPictureEnabled'] as bool? ?? true,
       completionSoundEnabled: value['completionSoundEnabled'] as bool? ?? false,
       completionHapticsEnabled:
           value['completionHapticsEnabled'] as bool? ?? true,
@@ -263,8 +277,7 @@ class AppSettings {
         30,
       ),
       localBackupDirectory: value['localBackupDirectory'] as String? ?? '',
-      localBackupAutoEnabled:
-          value['localBackupAutoEnabled'] as bool? ?? false,
+      localBackupAutoEnabled: value['localBackupAutoEnabled'] as bool? ?? false,
       localBackupAutoIntervalMinutes: _boundedInt(
         value['localBackupAutoIntervalMinutes'],
         5,
@@ -339,6 +352,7 @@ class TimerSnapshot {
     required this.phase,
     required this.totalSeconds,
     required this.remainingSeconds,
+    this.completedFocusCycles = 0,
     this.startedAt,
     this.endsAt,
     this.pausedAt,
@@ -348,6 +362,7 @@ class TimerSnapshot {
   final TimerPhase phase;
   final int totalSeconds;
   final int remainingSeconds;
+  final int completedFocusCycles;
   final DateTime? startedAt;
   final DateTime? endsAt;
   final DateTime? pausedAt;
@@ -360,6 +375,7 @@ class TimerSnapshot {
     TimerPhase? phase,
     int? totalSeconds,
     int? remainingSeconds,
+    int? completedFocusCycles,
     DateTime? startedAt,
     DateTime? endsAt,
     DateTime? pausedAt,
@@ -371,6 +387,7 @@ class TimerSnapshot {
       phase: phase ?? this.phase,
       totalSeconds: totalSeconds ?? this.totalSeconds,
       remainingSeconds: remainingSeconds ?? this.remainingSeconds,
+      completedFocusCycles: completedFocusCycles ?? this.completedFocusCycles,
       startedAt: startedAt ?? this.startedAt,
       endsAt: clearEndsAt ? null : endsAt ?? this.endsAt,
       pausedAt: clearPausedAt ? null : pausedAt ?? this.pausedAt,
@@ -383,6 +400,7 @@ class TimerSnapshot {
       'phase': phase.name,
       'totalSeconds': totalSeconds,
       'remainingSeconds': remainingSeconds,
+      'completedFocusCycles': completedFocusCycles,
       'startedAt': startedAt?.toUtc().toIso8601String(),
       'endsAt': endsAt?.toUtc().toIso8601String(),
       'pausedAt': pausedAt?.toUtc().toIso8601String(),
@@ -419,6 +437,12 @@ class TimerSnapshot {
         0,
         24 * 3600,
         total,
+      ),
+      completedFocusCycles: _boundedInt(
+        value['completedFocusCycles'],
+        0,
+        1000,
+        0,
       ),
       startedAt: _dateTimeOrNull(value['startedAt']),
       endsAt: _dateTimeOrNull(value['endsAt']),

@@ -24,6 +24,7 @@ class TomatoTimerEngine {
       phase: TimerPhase.idle,
       totalSeconds: seconds,
       remainingSeconds: seconds,
+      completedFocusCycles: 0,
     );
   }
 
@@ -48,6 +49,7 @@ class TomatoTimerEngine {
         phase: TimerPhase.running,
         totalSeconds: total,
         remainingSeconds: remaining,
+        completedFocusCycles: current.completedFocusCycles,
         startedAt: current.startedAt ?? now,
         endsAt: now.add(Duration(seconds: remaining)),
       ),
@@ -78,7 +80,7 @@ class TomatoTimerEngine {
   TomatoData reset(TomatoData data, {DateTime? at}) {
     final now = at ?? DateTime.now();
     return data.copyWith(
-      timer: snapshotForMode(data.timer.mode, data.settings),
+      timer: snapshotForMode(TimerMode.focus, data.settings),
       updatedAt: now,
     );
   }
@@ -103,6 +105,13 @@ class TomatoTimerEngine {
 
   TomatoData selectMode(TomatoData data, TimerMode mode, {DateTime? at}) {
     final now = at ?? DateTime.now();
+    if (mode != TimerMode.focus &&
+        data.timer.completedFocusCycles >= data.settings.focusCyclesPerRun) {
+      return data.copyWith(
+        timer: snapshotForMode(TimerMode.focus, data.settings),
+        updatedAt: now,
+      );
+    }
     return data.copyWith(
       timer: snapshotForMode(mode, data.settings),
       updatedAt: now,
@@ -116,6 +125,13 @@ class TomatoTimerEngine {
     if (current.phase != TimerPhase.running ||
         current.mode == TimerMode.focus) {
       return ticked;
+    }
+    if (ticked.timer.completedFocusCycles >=
+        ticked.settings.focusCyclesPerRun) {
+      return ticked.copyWith(
+        timer: snapshotForMode(TimerMode.focus, ticked.settings),
+        updatedAt: now,
+      );
     }
 
     final focusReady = ticked.copyWith(
@@ -179,11 +195,14 @@ class TomatoTimerEngine {
     final sessions = [...data.sessions];
     var cycleCount = data.focusCycleCount;
     var nextMode = TimerMode.focus;
+    var nextPhase = TimerPhase.running;
+    var completedCycles = current.completedFocusCycles;
 
     if (current.mode == TimerMode.focus) {
       final focusedSeconds = current.totalSeconds;
       if (focusedSeconds >= FocusSession.minimumRecordedSeconds) {
         cycleCount += 1;
+        completedCycles += 1;
         sessions.insert(
           0,
           FocusSession(
@@ -197,15 +216,34 @@ class TomatoTimerEngine {
             completed: true,
           ),
         );
-        nextMode = _nextBreakMode(cycleCount, data.settings);
+        if (completedCycles >= data.settings.focusCyclesPerRun) {
+          nextMode = TimerMode.focus;
+          nextPhase = TimerPhase.idle;
+          completedCycles = 0;
+        } else {
+          nextMode = _nextBreakMode(cycleCount, data.settings);
+        }
       } else {
         nextMode = TimerMode.shortBreak;
+      }
+    } else {
+      if (completedCycles >= data.settings.focusCyclesPerRun) {
+        nextMode = TimerMode.focus;
+        nextPhase = TimerPhase.idle;
+        completedCycles = 0;
       }
     }
 
     return data.copyWith(
       sessions: sessions,
-      timer: _runningSnapshotForMode(nextMode, data.settings, now),
+      timer: nextPhase == TimerPhase.running
+          ? _runningSnapshotForMode(
+              nextMode,
+              data.settings,
+              now,
+              completedCycles: completedCycles,
+            )
+          : snapshotForMode(TimerMode.focus, data.settings),
       focusCycleCount: cycleCount,
       updatedAt: now,
     );
@@ -253,14 +291,16 @@ class TomatoTimerEngine {
   TimerSnapshot _runningSnapshotForMode(
     TimerMode mode,
     AppSettings settings,
-    DateTime now,
-  ) {
+    DateTime now, {
+    int completedCycles = 0,
+  }) {
     final seconds = mode.durationSeconds(settings);
     return TimerSnapshot(
       mode: mode,
       phase: TimerPhase.running,
       totalSeconds: seconds,
       remainingSeconds: seconds,
+      completedFocusCycles: completedCycles,
       startedAt: now,
       endsAt: now.add(Duration(seconds: seconds)),
     );

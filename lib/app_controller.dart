@@ -29,6 +29,7 @@ class AppController extends ChangeNotifier {
   Timer? _ticker;
   Timer? _autoSyncTimer;
   Timer? _localBackupTimer;
+  Future<void> _saveQueue = Future<void>.value();
   DateTime? _lastAutoSyncAttemptAt;
   DateTime? _lastSyncAt;
   String? _lastSyncError;
@@ -38,6 +39,7 @@ class AppController extends ChangeNotifier {
   bool _loading = true;
   bool _syncing = false;
   bool _disposed = false;
+  bool _saveErrorNotified = false;
   String? _message;
 
   TomatoData get data => _data;
@@ -56,6 +58,26 @@ class AppController extends ChangeNotifier {
 
   String? get lastLocalBackupError => _lastLocalBackupError;
 
+  String localBackupStatusLabel() {
+    final error = _lastLocalBackupError;
+    if (error != null) {
+      return error;
+    }
+    final path = _lastLocalBackupPath;
+    if (path == null) {
+      return '本地备份尚未创建';
+    }
+    return '本地备份已保存 ${_formatDateTime(_lastLocalBackupAt!)} · $path';
+  }
+
+  String _formatDateTime(DateTime value) {
+    final local = value.toLocal();
+    return '${local.month.toString().padLeft(2, '0')}-'
+        '${local.day.toString().padLeft(2, '0')} '
+        '${local.hour.toString().padLeft(2, '0')}:'
+        '${local.minute.toString().padLeft(2, '0')}';
+  }
+
   String? takeMessage() {
     final current = _message;
     _message = null;
@@ -70,7 +92,7 @@ class AppController extends ChangeNotifier {
       final ticked = _timerEngine.tick(loaded);
       _data = ticked.data;
       if (ticked.changed) {
-        await _storage.save(_data);
+        await _saveData(_data);
       }
       _setCompletionMessage(ticked.completedMode);
     } on Object {
@@ -103,7 +125,16 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> skip() async {
-    await _replaceData(_timerEngine.skip(_data));
+    final before = _data.timer;
+    final next = _timerEngine.skip(_data);
+    await _replaceData(next);
+    if (before.phase == TimerPhase.running &&
+        before.mode != TimerMode.focus &&
+        next.timer.phase == TimerPhase.running &&
+        next.timer.mode == TimerMode.focus) {
+      _setCompletionMessage(before.mode);
+      _notify();
+    }
   }
 
   Future<void> selectMode(TimerMode mode) async {
@@ -132,12 +163,14 @@ class AppController extends ChangeNotifier {
     await _runLocalBackup(
       directory: directory,
       keepCount: _data.settings.localBackupKeepCount,
+      manual: true,
     );
   }
 
   Future<void> _runLocalBackup({
     String? directory,
     int keepCount = 0,
+    bool manual = false,
   }) async {
     try {
       await _storage.save(_data);
@@ -157,8 +190,14 @@ class AppController extends ChangeNotifier {
       _lastLocalBackupAt = DateTime.now();
       _lastLocalBackupPath = path;
       _lastLocalBackupError = null;
+      if (manual) {
+        _message = 'LOCAL_BACKUP_SUCCESS';
+      }
     } on Object {
       _lastLocalBackupError = '本地备份失败，请检查目录是否可写';
+      if (manual) {
+        _message = _lastLocalBackupError;
+      }
     } finally {
       _notify();
     }
@@ -186,7 +225,7 @@ class AppController extends ChangeNotifier {
     try {
       final merged = await _webDavService.sync(_data.settings.webDav, _data);
       _data = merged;
-      await _storage.save(_data);
+      await _saveData(_data);
       _lastSyncAt = attemptedAt;
       _lastSyncError = null;
     } on WebDavException catch (error) {
@@ -244,7 +283,7 @@ class AppController extends ChangeNotifier {
     _restartAutoSyncTimer();
     _restartLocalBackupTimer();
     _notify();
-    await _storage.save(_data);
+    await _saveData(_data);
   }
 
   void _restartTicker() {
@@ -290,14 +329,32 @@ class AppController extends ChangeNotifier {
     if (mode == null) {
       return;
     }
-    _message = mode == TimerMode.focus ? '专注完成，进入休息' : '休息结束，回到专注';
+    final timer = _data.timer;
+    final runFinished =
+        timer.mode == TimerMode.focus && timer.phase == TimerPhase.idle;
+    if (runFinished) {
+      _message = '已达到循环次数，计时已停止';
+    } else {
+      _message = mode == TimerMode.focus ? '专注完成，进入休息' : '休息结束，回到专注';
+    }
     unawaited(_completionFeedback.notify(mode, _data.settings));
   }
 
   Future<void> _saveCurrentSilently() async {
+    await _saveData(_data);
+  }
+
+  Future<void> _saveData(TomatoData snapshot) async {
+    final writeFuture = _saveQueue.then((_) => _storage.save(snapshot));
+    _saveQueue = writeFuture.then<void>((_) {}, onError: (error, stack) {});
     try {
-      await _storage.save(_data);
+      await writeFuture;
+      _saveErrorNotified = false;
     } on Object {
+      if (_saveErrorNotified) {
+        return;
+      }
+      _saveErrorNotified = true;
       _message = '本地数据保存失败';
       _notify();
     }

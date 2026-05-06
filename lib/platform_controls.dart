@@ -46,9 +46,60 @@ class PlatformControls {
     await _invokeSilently('enterPictureInPicture');
   }
 
+  static Future<void> setTimerNotification({
+    required bool enabled,
+    required String title,
+    required String subtitle,
+    required int totalSeconds,
+    required int remainingSeconds,
+  }) async {
+    await _invokeSilently('setTimerNotification', {
+      'enabled': enabled,
+      'title': title,
+      'subtitle': subtitle,
+      'totalSeconds': totalSeconds,
+      'remainingSeconds': remainingSeconds,
+    });
+  }
+
+  static Future<bool> requestNotificationPermission() async {
+    try {
+      final granted = await _channel.invokeMethod<bool>(
+        'requestNotificationPermission',
+      );
+      return granted ?? false;
+    } on MissingPluginException {
+      return true;
+    } on PlatformException {
+      return false;
+    }
+  }
+
+  static Future<void> openNotificationSettings() async {
+    await _invokeSilently('openNotificationSettings');
+  }
+
   static Future<String?> pickDirectory() async {
     try {
       return await _channel.invokeMethod<String>('pickDirectory');
+    } on MissingPluginException {
+      return null;
+    } on PlatformException {
+      return null;
+    }
+  }
+
+  static Future<String?> writeTextFile({
+    required String directoryUri,
+    required String displayName,
+    required String contents,
+  }) async {
+    try {
+      return await _channel.invokeMethod<String>('writeTextFile', {
+        'directoryUri': directoryUri,
+        'displayName': displayName,
+        'contents': contents,
+      });
     } on MissingPluginException {
       return null;
     } on PlatformException {

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'models.dart';
+import 'platform_controls.dart';
 
 abstract class TomatoStore {
   Future<TomatoData> load();
@@ -49,6 +50,22 @@ class AppStorage implements TomatoStore {
     int keepCount = 0,
   }) async {
     final configured = directoryPath?.trim();
+    final createdAt = at ?? DateTime.now();
+    final displayName = 'gan_backup_${_timestamp(createdAt)}.json';
+    if (_isAndroidTreeUri(configured)) {
+      final uri = await PlatformControls.writeTextFile(
+        directoryUri: configured!,
+        displayName: displayName,
+        contents: data.toPrettyJson(),
+      );
+      if (uri == null || uri.trim().isEmpty) {
+        throw const FileSystemException(
+          'Failed to write backup into SAF directory',
+        );
+      }
+      return uri;
+    }
+
     final backupDirectory = configured != null && configured.isNotEmpty
         ? Directory(configured)
         : Directory(
@@ -56,7 +73,6 @@ class AppStorage implements TomatoStore {
             '${Platform.pathSeparator}local_backups',
           );
     await backupDirectory.create(recursive: true);
-    final createdAt = at ?? DateTime.now();
     final basePath =
         '${backupDirectory.path}${Platform.pathSeparator}'
         'gan_backup_${_timestamp(createdAt)}';
@@ -73,6 +89,14 @@ class AppStorage implements TomatoStore {
     }
 
     return file.path;
+  }
+
+  bool _isAndroidTreeUri(String? value) {
+    if (value == null) {
+      return false;
+    }
+    final trimmed = value.trim();
+    return trimmed.startsWith('content://');
   }
 
   Future<void> _pruneBackups(Directory dir, int keepCount) async {

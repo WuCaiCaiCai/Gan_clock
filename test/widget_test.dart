@@ -74,6 +74,7 @@ void main() {
     expect(find.text('暂停'), findsOneWidget);
     expect(find.byIcon(Icons.pause), findsOneWidget);
     expect(find.text('停止'), findsOneWidget);
+    expect(find.byIcon(Icons.picture_in_picture_alt), findsOneWidget);
 
     final stopButton = find.widgetWithText(OutlinedButton, '停止');
     await tester.ensureVisible(stopButton);
@@ -126,6 +127,7 @@ void main() {
     expect(find.text('立即同步'), findsOneWidget);
     expect(find.text('自动同步'), findsWidgets);
     expect(find.text('WebDAV 设置'), findsOneWidget);
+    expect(find.text('WebDAV'), findsNothing);
 
     await tester.tap(find.text('WebDAV 设置'));
     await tester.pumpAndSettle();
@@ -300,5 +302,83 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('2026-01-01 · 专注 2 分钟'), findsOneWidget);
+  });
+
+  testWidgets('inactive lifecycle does not switch to pip preview layout', (
+    WidgetTester tester,
+  ) async {
+    await usePhoneSurface(tester);
+    final controller = AppController(
+      storage: MemoryStore(TomatoData.initial()),
+      completionFeedback: const NoopCompletionFeedback(),
+    );
+    await tester.pumpWidget(TomatoApp(controller: controller));
+    await tester.pump();
+
+    final startButton = find.widgetWithText(FilledButton, '开始');
+    await tester.ensureVisible(startButton);
+    await tester.tap(startButton);
+    await tester.pump(const Duration(milliseconds: 120));
+    final before = tester.getSize(find.byType(TimerProgressRing)).width;
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    await tester.pump(const Duration(milliseconds: 80));
+    final after = tester.getSize(find.byType(TimerProgressRing)).width;
+
+    expect((after - before).abs(), lessThan(0.1));
+
+    controller.dispose();
+  });
+
+  testWidgets('today stats show minute accumulation without unit toggle', (
+    WidgetTester tester,
+  ) async {
+    await usePhoneSurface(tester);
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final yesterday = today.subtract(const Duration(days: 1));
+    final data = TomatoData(
+      timer: TimerSnapshot.initial(const AppSettings()),
+      settings: const AppSettings(),
+      focusCycleCount: 0,
+      updatedAt: now,
+      sessions: [
+        FocusSession(
+          id: 'today',
+          startedAt: today.add(const Duration(hours: 9)),
+          endedAt: today.add(const Duration(hours: 9, minutes: 50)),
+          focusedSeconds: 3000,
+          plannedSeconds: 3000,
+          completed: true,
+        ),
+        FocusSession(
+          id: 'yesterday',
+          startedAt: yesterday.add(const Duration(hours: 9)),
+          endedAt: yesterday.add(const Duration(hours: 9, minutes: 30)),
+          focusedSeconds: 1800,
+          plannedSeconds: 1800,
+          completed: true,
+        ),
+      ],
+    );
+    final controller = AppController(
+      storage: MemoryStore(data),
+      completionFeedback: const NoopCompletionFeedback(),
+    );
+    await tester.pumpWidget(TomatoApp(controller: controller));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('统计'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('今日专注'), findsOneWidget);
+    expect(find.text('总专注'), findsOneWidget);
+    expect(find.text('50 分钟'), findsOneWidget);
+    expect(find.text('1 小时 20 分钟'), findsAtLeastNWidgets(1));
+    expect(find.text('分'), findsNothing);
+    expect(find.text('时'), findsNothing);
+    expect(find.text('日'), findsNothing);
+
+    controller.dispose();
   });
 }

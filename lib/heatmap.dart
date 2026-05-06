@@ -27,6 +27,10 @@ class _FocusHeatmapState extends State<FocusHeatmap> {
         ? _monthCells(now, widget.focusSecondsByDay)
         : _yearCells(now, widget.focusSecondsByDay);
     final activeCells = cells.where((cell) => cell.inScope).toList();
+    final maxSeconds = activeCells.fold<int>(
+      0,
+      (maxValue, cell) => math.max(maxValue, cell.seconds),
+    );
     final selectedCell =
         _selectedCell(activeCells, selectedDate) ??
         activeCells.firstWhere(
@@ -45,15 +49,17 @@ class _FocusHeatmapState extends State<FocusHeatmap> {
             ? _MonthHeatmap(
                 cells: cells,
                 selectedDate: selectedCell.date,
+                maxSeconds: maxSeconds,
                 onSelected: _selectDate,
               )
             : _YearHeatmap(
                 cells: cells,
                 selectedDate: selectedCell.date,
+                maxSeconds: maxSeconds,
                 onSelected: _selectDate,
               ),
         const SizedBox(height: 12),
-        const _HeatmapLegend(),
+        _HeatmapLegend(maxSeconds: maxSeconds),
       ],
     );
     final summary = _HeatmapSummary(
@@ -72,9 +78,24 @@ class _FocusHeatmapState extends State<FocusHeatmap> {
               Row(
                 children: [
                   Expanded(
-                    child: Text(
-                      '专注热力图',
-                      style: Theme.of(context).textTheme.titleMedium,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '专注热力图',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          _scopeLabel(now, _scope),
+                          style: Theme.of(context).textTheme.labelMedium
+                              ?.copyWith(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
+                              ),
+                        ),
+                      ],
                     ),
                   ),
                   SegmentedButton<HeatmapScope>(
@@ -258,11 +279,13 @@ class _MonthHeatmap extends StatelessWidget {
   const _MonthHeatmap({
     required this.cells,
     required this.selectedDate,
+    required this.maxSeconds,
     required this.onSelected,
   });
 
   final List<_HeatmapCell> cells;
   final DateTime? selectedDate;
+  final int maxSeconds;
   final ValueChanged<DateTime> onSelected;
 
   @override
@@ -297,6 +320,7 @@ class _MonthHeatmap extends StatelessWidget {
                 return _HeatmapTile(
                   cell: cells[index],
                   compact: false,
+                  maxSeconds: maxSeconds,
                   selected: _isSameDay(cells[index].date, selectedDate),
                   onSelected: onSelected,
                 );
@@ -313,16 +337,19 @@ class _YearHeatmap extends StatelessWidget {
   const _YearHeatmap({
     required this.cells,
     required this.selectedDate,
+    required this.maxSeconds,
     required this.onSelected,
   });
 
   final List<_HeatmapCell> cells;
   final DateTime? selectedDate;
+  final int maxSeconds;
   final ValueChanged<DateTime> onSelected;
 
   @override
   Widget build(BuildContext context) {
     final weeks = (cells.length / DateTime.daysPerWeek).ceil();
+    final monthMarkers = _yearMonthMarkers(cells);
     final rowMajorCells = <_HeatmapCell>[
       for (var weekday = 0; weekday < DateTime.daysPerWeek; weekday++)
         for (var week = 0; week < weeks; week++)
@@ -336,31 +363,92 @@ class _YearHeatmap extends StatelessWidget {
     final width = weeks * tile + (weeks - 1) * gap;
     const height =
         DateTime.daysPerWeek * tile + (DateTime.daysPerWeek - 1) * gap;
+    final labelStyle = Theme.of(context).textTheme.labelSmall?.copyWith(
+      color: Theme.of(context).colorScheme.onSurfaceVariant,
+    );
 
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: SizedBox(
-        width: width,
-        height: height,
-        child: GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: rowMajorCells.length,
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: weeks,
-            mainAxisSpacing: gap,
-            crossAxisSpacing: gap,
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 18,
+          height: height,
+          child: Column(
+            children: [
+              for (
+                var weekday = 0;
+                weekday < DateTime.daysPerWeek;
+                weekday++
+              ) ...[
+                SizedBox(
+                  height: tile,
+                  child: Center(
+                    child: switch (weekday) {
+                      0 => Text('一', style: labelStyle),
+                      2 => Text('三', style: labelStyle),
+                      4 => Text('五', style: labelStyle),
+                      _ => const SizedBox.shrink(),
+                    },
+                  ),
+                ),
+                if (weekday != DateTime.daysPerWeek - 1)
+                  const SizedBox(height: gap),
+              ],
+            ],
           ),
-          itemBuilder: (context, index) {
-            return _HeatmapTile(
-              cell: rowMajorCells[index],
-              compact: true,
-              selected: _isSameDay(rowMajorCells[index].date, selectedDate),
-              onSelected: onSelected,
-            );
-          },
         ),
-      ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: width,
+                  height: 14,
+                  child: Stack(
+                    children: [
+                      for (final marker in monthMarkers)
+                        Positioned(
+                          left: marker.weekIndex * (tile + gap),
+                          child: Text(marker.label, style: labelStyle),
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 6),
+                SizedBox(
+                  width: width,
+                  height: height,
+                  child: GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: rowMajorCells.length,
+                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: weeks,
+                      mainAxisSpacing: gap,
+                      crossAxisSpacing: gap,
+                    ),
+                    itemBuilder: (context, index) {
+                      return _HeatmapTile(
+                        cell: rowMajorCells[index],
+                        compact: true,
+                        maxSeconds: maxSeconds,
+                        selected: _isSameDay(
+                          rowMajorCells[index].date,
+                          selectedDate,
+                        ),
+                        onSelected: onSelected,
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -369,12 +457,14 @@ class _HeatmapTile extends StatelessWidget {
   const _HeatmapTile({
     required this.cell,
     required this.compact,
+    required this.maxSeconds,
     required this.selected,
     required this.onSelected,
   });
 
   final _HeatmapCell cell;
   final bool compact;
+  final int maxSeconds;
   final bool selected;
   final ValueChanged<DateTime> onSelected;
 
@@ -382,12 +472,12 @@ class _HeatmapTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final radius = BorderRadius.circular(compact ? 3 : 5);
-    final color = cell.inScope
-        ? _heatColor(context, cell.seconds)
+    final tileColor = cell.inScope
+        ? _heatColor(context, cell.seconds, maxSeconds)
         : const Color(0x00FFFFFF);
     final child = DecoratedBox(
       decoration: BoxDecoration(
-        color: color,
+        color: tileColor,
         borderRadius: radius,
         border: selected ? Border.all(color: scheme.secondary, width: 2) : null,
       ),
@@ -398,7 +488,7 @@ class _HeatmapTile extends StatelessWidget {
                 '${cell.date!.day}',
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
                   color: cell.seconds > 0
-                      ? scheme.onPrimary
+                      ? _onHeatColor(tileColor)
                       : scheme.onSurfaceVariant,
                 ),
               ),
@@ -455,10 +545,19 @@ class _SelectedDaySummary extends StatelessWidget {
 }
 
 class _HeatmapLegend extends StatelessWidget {
-  const _HeatmapLegend();
+  const _HeatmapLegend({required this.maxSeconds});
+
+  final int maxSeconds;
 
   @override
   Widget build(BuildContext context) {
+    final levels = [
+      0,
+      maxSeconds <= 0 ? 0 : (maxSeconds * 0.25).round(),
+      maxSeconds <= 0 ? 0 : (maxSeconds * 0.5).round(),
+      maxSeconds <= 0 ? 0 : (maxSeconds * 0.75).round(),
+      maxSeconds <= 0 ? 0 : maxSeconds,
+    ];
     return Row(
       children: [
         Text(
@@ -468,16 +567,10 @@ class _HeatmapLegend extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 8),
-        for (final seconds in const [
-          0,
-          15 * 60,
-          30 * 60,
-          60 * 60,
-          90 * 60,
-        ]) ...[
+        for (final seconds in levels) ...[
           DecoratedBox(
             decoration: BoxDecoration(
-              color: _heatColor(context, seconds),
+              color: _heatColor(context, seconds, maxSeconds),
               borderRadius: BorderRadius.circular(3),
             ),
             child: const SizedBox.square(dimension: 12),
@@ -567,17 +660,43 @@ bool _isSameDay(DateTime? left, DateTime? right) {
       left.day == right.day;
 }
 
-Color _heatColor(BuildContext context, int seconds) {
-  final scheme = Theme.of(context).colorScheme;
-  if (seconds <= 0) {
-    return scheme.surfaceContainerHighest;
+Color _heatColor(BuildContext context, int seconds, int maxSeconds) {
+  if (seconds <= 0 || maxSeconds <= 0) {
+    return _githubHeatPalette(context).first;
   }
-  final progress = (seconds / (90 * 60)).clamp(0.0, 1.0);
-  return Color.lerp(
-    scheme.primary.withAlpha((0.35 * 255).round()),
-    scheme.primary,
-    progress,
-  )!;
+  final ratio = (seconds / maxSeconds).clamp(0.0, 1.0);
+  final palette = _githubHeatPalette(context);
+  final level = (ratio * (palette.length - 1)).ceil().clamp(
+    1,
+    palette.length - 1,
+  );
+  return palette[level];
+}
+
+Color _onHeatColor(Color color) {
+  return ThemeData.estimateBrightnessForColor(color) == Brightness.dark
+      ? Colors.white
+      : Colors.black;
+}
+
+List<Color> _githubHeatPalette(BuildContext context) {
+  final dark = Theme.of(context).brightness == Brightness.dark;
+  if (dark) {
+    return const [
+      Color(0xFF161B22),
+      Color(0xFF0E4429),
+      Color(0xFF006D32),
+      Color(0xFF26A641),
+      Color(0xFF39D353),
+    ];
+  }
+  return const [
+    Color(0xFFEBEDF0),
+    Color(0xFF9BE9A8),
+    Color(0xFF40C463),
+    Color(0xFF30A14E),
+    Color(0xFF216E39),
+  ];
 }
 
 String _scopeLabel(DateTime now, HeatmapScope scope) {
@@ -587,6 +706,28 @@ String _scopeLabel(DateTime now, HeatmapScope scope) {
     case HeatmapScope.year:
       return '${now.year}';
   }
+}
+
+List<_MonthMarker> _yearMonthMarkers(List<_HeatmapCell> cells) {
+  final markers = <_MonthMarker>[];
+  for (var month = 1; month <= 12; month++) {
+    final index = cells.indexWhere((cell) {
+      final date = cell.date;
+      return date != null && date.month == month && date.day == 1;
+    });
+    if (index < 0) {
+      continue;
+    }
+    markers.add(_MonthMarker(index ~/ DateTime.daysPerWeek, month));
+  }
+  return markers;
+}
+
+class _MonthMarker {
+  const _MonthMarker(this.weekIndex, int month) : label = '$month月';
+
+  final int weekIndex;
+  final String label;
 }
 
 String _formatDate(DateTime value) {
