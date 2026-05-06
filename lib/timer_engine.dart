@@ -112,11 +112,17 @@ class TomatoTimerEngine {
   TomatoData skip(TomatoData data, {DateTime? at}) {
     final now = at ?? DateTime.now();
     final ticked = tick(data, at: now).data;
-    final nextMode = _nextModeAfter(ticked.timer.mode, ticked);
-    return ticked.copyWith(
-      timer: snapshotForMode(nextMode, ticked.settings),
+    final current = ticked.timer;
+    if (current.phase != TimerPhase.running ||
+        current.mode == TimerMode.focus) {
+      return ticked;
+    }
+
+    final focusReady = ticked.copyWith(
+      timer: snapshotForMode(TimerMode.focus, ticked.settings),
       updatedAt: now,
     );
+    return start(focusReady, at: now);
   }
 
   TimerTickResult tick(TomatoData data, {DateTime? at}) {
@@ -235,13 +241,6 @@ class TomatoTimerEngine {
       ],
       updatedAt: now,
     );
-  }
-
-  TimerMode _nextModeAfter(TimerMode mode, TomatoData data) {
-    if (mode != TimerMode.focus) {
-      return TimerMode.focus;
-    }
-    return _nextBreakMode(data.focusCycleCount + 1, data.settings);
   }
 
   TimerMode _nextBreakMode(int completedFocusCount, AppSettings settings) {

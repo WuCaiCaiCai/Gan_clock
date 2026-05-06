@@ -110,6 +110,26 @@ ThemeMode _flutterThemeMode(AppThemeMode mode) {
   }
 }
 
+void _syncSystemUi(BuildContext context, TimerMode mode) {
+  final background = _modePalette(mode).backgroundFor(context);
+  final backgroundBrightness = ThemeData.estimateBrightnessForColor(background);
+  final iconBrightness = backgroundBrightness == Brightness.dark
+      ? Brightness.light
+      : Brightness.dark;
+  SystemChrome.setSystemUIOverlayStyle(
+    SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      systemNavigationBarColor: background,
+      systemNavigationBarDividerColor: Colors.transparent,
+      statusBarIconBrightness: iconBrightness,
+      statusBarBrightness: backgroundBrightness,
+      systemNavigationBarIconBrightness: iconBrightness,
+      systemStatusBarContrastEnforced: false,
+      systemNavigationBarContrastEnforced: false,
+    ),
+  );
+}
+
 class AppScope extends InheritedNotifier<AppController> {
   const AppScope({
     required AppController controller,
@@ -143,12 +163,17 @@ class _TomatoHomePageState extends State<TomatoHomePage>
   Timer? _idleChromeTimer;
   int _selectedIndex = 0;
   bool _chromeHidden = false;
+  bool _inPictureInPicture = false;
   bool _ignoreNextQuietTap = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    PlatformControls.setEventHandlers(
+      onPictureInPictureChanged: _handlePictureInPictureChanged,
+      onKeepScreenOnChanged: _handlePlatformKeepScreenOnChanged,
+    );
   }
 
   @override
@@ -172,8 +197,14 @@ class _TomatoHomePageState extends State<TomatoHomePage>
     _idleChromeTimer?.cancel();
     unawaited(PlatformControls.setKeepScreenOn(false));
     unawaited(
-      PlatformControls.setPipState(enabled: false, title: '', subtitle: ''),
+      PlatformControls.setPipState(
+        enabled: false,
+        title: '',
+        subtitle: '',
+        keepScreenOn: false,
+      ),
     );
+    PlatformControls.clearEventHandlers();
     super.dispose();
   }
 
@@ -183,6 +214,12 @@ class _TomatoHomePageState extends State<TomatoHomePage>
         state == AppLifecycleState.paused) {
       _requestQuiet();
       unawaited(PlatformControls.enterPictureInPicture());
+    } else if (state == AppLifecycleState.resumed && _inPictureInPicture) {
+      setState(() {
+        _inPictureInPicture = false;
+        _chromeHidden = false;
+      });
+      _syncIdleChrome(restart: true);
     }
   }
 
@@ -212,8 +249,9 @@ class _TomatoHomePageState extends State<TomatoHomePage>
     final controller = AppScope.watch(context);
     final data = controller.data;
     final timer = data.timer;
+    _syncSystemUi(context, timer.mode);
     final hideChrome =
-        _chromeHidden &&
+        (_chromeHidden || _inPictureInPicture) &&
         _selectedIndex == 0 &&
         timer.phase == TimerPhase.running;
 
@@ -259,6 +297,7 @@ class _TomatoHomePageState extends State<TomatoHomePage>
                               controller: controller,
                               data: data,
                               quiet: hideChrome,
+                              inPictureInPicture: _inPictureInPicture,
                             ),
                           ),
                         ),
@@ -280,6 +319,7 @@ class _TomatoHomePageState extends State<TomatoHomePage>
     required AppController controller,
     required TomatoData data,
     required bool quiet,
+    required bool inPictureInPicture,
   }) {
     switch (_selectedIndex) {
       case 0:
@@ -287,6 +327,7 @@ class _TomatoHomePageState extends State<TomatoHomePage>
           controller: controller,
           data: data,
           quiet: quiet,
+          inPictureInPicture: inPictureInPicture,
           onRequestQuiet: _requestQuiet,
           onEnterPictureInPicture: _enterPictureInPicture,
         );
@@ -299,6 +340,7 @@ class _TomatoHomePageState extends State<TomatoHomePage>
           controller: controller,
           data: data,
           quiet: quiet,
+          inPictureInPicture: inPictureInPicture,
           onRequestQuiet: _requestQuiet,
           onEnterPictureInPicture: _enterPictureInPicture,
         );
@@ -338,6 +380,9 @@ class _TomatoHomePageState extends State<TomatoHomePage>
   }
 
   void _handleUserActivity() {
+    if (_inPictureInPicture) {
+      return;
+    }
     if (_chromeHidden) {
       setState(() {
         _chromeHidden = false;
@@ -350,6 +395,11 @@ class _TomatoHomePageState extends State<TomatoHomePage>
   void _syncIdleChrome({bool restart = false}) {
     final controller = _controller;
     if (controller == null || !mounted) {
+      return;
+    }
+    if (_inPictureInPicture) {
+      _idleChromeTimer?.cancel();
+      _idleChromeTimer = null;
       return;
     }
     final settings = controller.data.settings;
@@ -407,6 +457,39 @@ class _TomatoHomePageState extends State<TomatoHomePage>
         enabled: timer.phase == TimerPhase.running,
         title: formatClock(timer.remainingSeconds),
         subtitle: timer.mode.label,
+        keepScreenOn: controller.data.settings.keepScreenOnEnabled,
+      ),
+    );
+  }
+
+  void _handlePictureInPictureChanged(bool enabled) {
+    if (!mounted || _inPictureInPicture == enabled) {
+      return;
+    }
+    setState(() {
+      _inPictureInPicture = enabled;
+      if (enabled) {
+        _selectedIndex = 0;
+        _chromeHidden = true;
+      } else {
+        _chromeHidden = false;
+      }
+    });
+    _syncIdleChrome(restart: true);
+  }
+
+  void _handlePlatformKeepScreenOnChanged(bool enabled) {
+    final controller = _controller;
+    if (!mounted || controller == null) {
+      return;
+    }
+    final settings = controller.data.settings;
+    if (settings.keepScreenOnEnabled == enabled) {
+      return;
+    }
+    unawaited(
+      controller.updateSettings(
+        settings.copyWith(keepScreenOnEnabled: enabled),
       ),
     );
   }
@@ -417,6 +500,7 @@ class _TimerPage extends StatelessWidget {
     required this.controller,
     required this.data,
     required this.quiet,
+    required this.inPictureInPicture,
     required this.onRequestQuiet,
     required this.onEnterPictureInPicture,
   });
@@ -424,6 +508,7 @@ class _TimerPage extends StatelessWidget {
   final AppController controller;
   final TomatoData data;
   final bool quiet;
+  final bool inPictureInPicture;
   final VoidCallback onRequestQuiet;
   final VoidCallback onEnterPictureInPicture;
 
@@ -431,13 +516,28 @@ class _TimerPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final timer = data.timer;
     final settings = data.settings;
+    if (inPictureInPicture) {
+      return Center(
+        child: PipTimerCapsule(
+          snapshot: timer,
+          keepScreenOn: settings.keepScreenOnEnabled,
+          onToggleKeepScreenOn: () {
+            controller.updateSettings(
+              settings.copyWith(
+                keepScreenOnEnabled: !settings.keepScreenOnEnabled,
+              ),
+            );
+          },
+        ),
+      );
+    }
+
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onRequestQuiet,
       child: Stack(
         children: [
-          Positioned.fill(child: _TimerProgressBackdrop(snapshot: timer)),
-          Center(child: TimerNumberDisplay(snapshot: timer)),
+          Center(child: TimerProgressRing(snapshot: timer)),
           Center(
             child: Transform.translate(
               offset: const Offset(0, 150),
@@ -456,6 +556,7 @@ class _TimerPage extends StatelessWidget {
               slideOffset: const Offset(0, 0.14),
               child: _TimerActions(
                 controller: controller,
+                mode: timer.mode,
                 phase: timer.phase,
                 keepScreenOn: settings.keepScreenOnEnabled,
                 onToggleKeepScreenOn: () {
@@ -792,19 +893,20 @@ class _HitokotoLine extends StatelessWidget {
   }
 }
 
-class TimerNumberDisplay extends StatefulWidget {
-  const TimerNumberDisplay({required this.snapshot, super.key});
+class TimerProgressRing extends StatefulWidget {
+  const TimerProgressRing({required this.snapshot, super.key});
 
   final TimerSnapshot snapshot;
 
   @override
-  State<TimerNumberDisplay> createState() => _TimerNumberDisplayState();
+  State<TimerProgressRing> createState() => _TimerProgressRingState();
 }
 
-class _TimerNumberDisplayState extends State<TimerNumberDisplay>
+class _TimerProgressRingState extends State<TimerProgressRing>
     with SingleTickerProviderStateMixin {
   late final AnimationController _startPulseController;
   late final Animation<double> _scaleAnimation;
+  late final Animation<double> _haloAnimation;
 
   @override
   void initState() {
@@ -829,10 +931,26 @@ class _TimerNumberDisplayState extends State<TimerNumberDisplay>
         weight: 58,
       ),
     ]).animate(_startPulseController);
+    _haloAnimation = TweenSequence<double>([
+      TweenSequenceItem(
+        tween: Tween<double>(
+          begin: 0,
+          end: 1,
+        ).chain(CurveTween(curve: Curves.easeOutCubic)),
+        weight: 34,
+      ),
+      TweenSequenceItem(
+        tween: Tween<double>(
+          begin: 1,
+          end: 0,
+        ).chain(CurveTween(curve: Curves.easeInCubic)),
+        weight: 66,
+      ),
+    ]).animate(_startPulseController);
   }
 
   @override
-  void didUpdateWidget(covariant TimerNumberDisplay oldWidget) {
+  void didUpdateWidget(covariant TimerProgressRing oldWidget) {
     super.didUpdateWidget(oldWidget);
     final started =
         oldWidget.snapshot.phase != TimerPhase.running &&
@@ -850,78 +968,289 @@ class _TimerNumberDisplayState extends State<TimerNumberDisplay>
 
   @override
   Widget build(BuildContext context) {
+    final total = math.max(1, widget.snapshot.totalSeconds);
+    final elapsed = (total - widget.snapshot.remainingSeconds).clamp(0, total);
+    final progress = elapsed / total;
     final theme = Theme.of(context);
     final textTheme = theme.textTheme;
+    final scheme = theme.colorScheme;
     final palette = _modePalette(widget.snapshot.mode);
-    final timerStyle = textTheme.displayLarge?.copyWith(
-      fontSize: 86,
-      height: 0.92,
-      letterSpacing: 0,
-      fontWeight: FontWeight.w800,
-      color: palette.accent,
-      fontFeatures: const [FontFeature.tabularFigures()],
-    );
 
-    return Center(
-      child: AnimatedBuilder(
-        animation: _startPulseController,
-        builder: (context, child) {
-          return Transform.scale(scale: _scaleAnimation.value, child: child);
-        },
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 32),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 440),
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              child: AnimatedDefaultTextStyle(
-                duration: const Duration(milliseconds: 260),
-                curve: Curves.easeOutCubic,
-                style: timerStyle ?? const TextStyle(fontSize: 86),
-                child: Text(
-                  formatClock(widget.snapshot.remainingSeconds),
-                  textAlign: TextAlign.center,
-                  softWrap: false,
-                ),
-              ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final shortest = math.min(constraints.maxWidth, constraints.maxHeight);
+        final available = math.max(180.0, shortest - 48);
+        final dimension = math.min(318.0, available);
+
+        return Center(
+          child: AnimatedBuilder(
+            animation: _startPulseController,
+            builder: (context, child) {
+              return Transform.scale(
+                scale: _scaleAnimation.value,
+                child: child,
+              );
+            },
+            child: TweenAnimationBuilder<double>(
+              tween: Tween<double>(end: progress),
+              duration: widget.snapshot.phase == TimerPhase.running
+                  ? const Duration(milliseconds: 680)
+                  : const Duration(milliseconds: 320),
+              curve: Curves.easeOutCubic,
+              builder: (context, value, child) {
+                return SizedBox.square(
+                  dimension: dimension,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      AnimatedBuilder(
+                        animation: _startPulseController,
+                        builder: (context, _) {
+                          return CustomPaint(
+                            painter: _RingPainter(
+                              progress: value,
+                              color: palette.accent,
+                              trackColor: palette.accent.withAlpha(
+                                scheme.brightness == Brightness.dark ? 76 : 52,
+                              ),
+                              haloOpacity: _haloAnimation.value,
+                            ),
+                          );
+                        },
+                      ),
+                      Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(42),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 180),
+                                child: Icon(
+                                  _modeIcon(widget.snapshot.mode),
+                                  key: ValueKey(widget.snapshot.mode),
+                                  color: palette.accent,
+                                  size: 30,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  formatClock(widget.snapshot.remainingSeconds),
+                                  textAlign: TextAlign.center,
+                                  softWrap: false,
+                                  style: textTheme.displayMedium?.copyWith(
+                                    height: 0.96,
+                                    letterSpacing: 0,
+                                    fontWeight: FontWeight.w800,
+                                    color: scheme.onSurface,
+                                    fontFeatures: const [
+                                      FontFeature.tabularFigures(),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 180),
+                                child: Text(
+                                  _phaseLabel(widget.snapshot.phase),
+                                  key: ValueKey(widget.snapshot.phase),
+                                  style: textTheme.titleSmall?.copyWith(
+                                    color: scheme.onSurfaceVariant,
+                                    letterSpacing: 0,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }
 
-class _TimerProgressBackdrop extends StatelessWidget {
-  const _TimerProgressBackdrop({required this.snapshot});
+class _RingPainter extends CustomPainter {
+  const _RingPainter({
+    required this.progress,
+    required this.color,
+    required this.trackColor,
+    required this.haloOpacity,
+  });
+
+  final double progress;
+  final Color color;
+  final Color trackColor;
+  final double haloOpacity;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const stroke = 18.0;
+    final rect =
+        Offset(stroke / 2, stroke / 2) &
+        Size(size.width - stroke, size.height - stroke);
+    final track = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke
+      ..strokeCap = StrokeCap.round
+      ..color = trackColor;
+    final progressPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke
+      ..strokeCap = StrokeCap.round
+      ..color = color;
+    final halo = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 28
+      ..strokeCap = StrokeCap.round
+      ..color = color.withAlpha((haloOpacity * 36).round());
+
+    canvas.drawArc(rect, 0, math.pi * 2, false, track);
+    if (haloOpacity > 0) {
+      canvas.drawArc(rect, -math.pi / 2, math.pi * 2 * progress, false, halo);
+    }
+    canvas.drawArc(
+      rect,
+      -math.pi / 2,
+      math.pi * 2 * progress,
+      false,
+      progressPaint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _RingPainter oldDelegate) {
+    return oldDelegate.progress != progress ||
+        oldDelegate.color != color ||
+        oldDelegate.trackColor != trackColor ||
+        oldDelegate.haloOpacity != haloOpacity;
+  }
+}
+
+class PipTimerCapsule extends StatelessWidget {
+  const PipTimerCapsule({
+    required this.snapshot,
+    required this.keepScreenOn,
+    required this.onToggleKeepScreenOn,
+    super.key,
+  });
 
   final TimerSnapshot snapshot;
+  final bool keepScreenOn;
+  final VoidCallback onToggleKeepScreenOn;
 
   @override
   Widget build(BuildContext context) {
     final total = math.max(1, snapshot.totalSeconds);
-    final elapsed = (total - snapshot.remainingSeconds).clamp(0, total);
-    final progress = elapsed / total;
+    final remaining = snapshot.remainingSeconds.clamp(0, total);
+    final remainingProgress = remaining / total;
     final palette = _modePalette(snapshot.mode);
+    final capsuleColor = palette.accent;
+    final onCapsule = _contrastOn(capsuleColor);
+    final textStyle = Theme.of(context).textTheme.displaySmall?.copyWith(
+      height: 0.95,
+      letterSpacing: 0,
+      fontWeight: FontWeight.w800,
+      color: onCapsule,
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
 
-    return TweenAnimationBuilder<double>(
-      tween: Tween<double>(end: progress),
-      duration: snapshot.phase == TimerPhase.running
-          ? const Duration(milliseconds: 680)
-          : const Duration(milliseconds: 320),
-      curve: Curves.easeOutCubic,
-      builder: (context, value, child) {
-        return Align(
-          alignment: Alignment.bottomCenter,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact =
+            constraints.maxWidth < 260 || constraints.maxHeight < 120;
+        final horizontalPadding = compact ? 14.0 : 18.0;
+        final verticalPadding = compact ? 8.0 : 12.0;
+        final side = compact ? 34.0 : 40.0;
+
+        return Padding(
+          padding: EdgeInsets.all(compact ? 12 : 18),
           child: FractionallySizedBox(
-            heightFactor: value.clamp(0.0, 1.0),
-            widthFactor: 1,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: palette.accent.withAlpha(
-                  Theme.of(context).colorScheme.brightness == Brightness.dark
-                      ? 44
-                      : 32,
+            widthFactor: 0.92,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(999),
+              child: Material(
+                color: capsuleColor,
+                child: Stack(
+                  children: [
+                    Positioned.fill(
+                      child: FractionallySizedBox(
+                        alignment: Alignment.centerLeft,
+                        widthFactor: remainingProgress.clamp(0.0, 1.0),
+                        child: ColoredBox(
+                          color: onCapsule.withAlpha(
+                            Theme.of(context).colorScheme.brightness ==
+                                    Brightness.dark
+                                ? 30
+                                : 24,
+                          ),
+                        ),
+                      ),
+                    ),
+                    Padding(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: horizontalPadding,
+                        vertical: verticalPadding,
+                      ),
+                      child: Row(
+                        children: [
+                          SizedBox.square(
+                            dimension: side,
+                            child: Center(
+                              child: Icon(
+                                _modeIcon(snapshot.mode),
+                                size: compact ? 18 : 20,
+                                color: onCapsule,
+                              ),
+                            ),
+                          ),
+                          Expanded(
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                formatClock(snapshot.remainingSeconds),
+                                textAlign: TextAlign.center,
+                                softWrap: false,
+                                style:
+                                    textStyle ??
+                                    TextStyle(
+                                      fontSize: compact ? 34 : 42,
+                                      color: onCapsule,
+                                    ),
+                              ),
+                            ),
+                          ),
+                          SizedBox.square(
+                            dimension: side,
+                            child: IconButton(
+                              tooltip: keepScreenOn ? '关闭屏幕常亮' : '开启屏幕常亮',
+                              padding: EdgeInsets.zero,
+                              style: IconButton.styleFrom(
+                                backgroundColor: onCapsule.withAlpha(28),
+                                foregroundColor: onCapsule,
+                              ),
+                              iconSize: compact ? 18 : 20,
+                              onPressed: onToggleKeepScreenOn,
+                              icon: Icon(
+                                keepScreenOn
+                                    ? Icons.lightbulb
+                                    : Icons.lightbulb_outline,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -935,6 +1264,7 @@ class _TimerProgressBackdrop extends StatelessWidget {
 class _TimerActions extends StatelessWidget {
   const _TimerActions({
     required this.controller,
+    required this.mode,
     required this.phase,
     required this.keepScreenOn,
     required this.onToggleKeepScreenOn,
@@ -942,6 +1272,7 @@ class _TimerActions extends StatelessWidget {
   });
 
   final AppController controller;
+  final TimerMode mode;
   final TimerPhase phase;
   final bool keepScreenOn;
   final VoidCallback onToggleKeepScreenOn;
@@ -951,6 +1282,7 @@ class _TimerActions extends StatelessWidget {
   Widget build(BuildContext context) {
     final running = phase == TimerPhase.running;
     final canStop = phase != TimerPhase.idle;
+    final canSkip = running && mode != TimerMode.focus;
     final scheme = Theme.of(context).colorScheme;
     return Center(
       child: Material(
@@ -1008,8 +1340,8 @@ class _TimerActions extends StatelessWidget {
                 icon: const Icon(Icons.picture_in_picture_alt_outlined),
               ),
               IconButton.filledTonal(
-                tooltip: '跳过当前阶段',
-                onPressed: controller.skip,
+                tooltip: '跳过休息',
+                onPressed: canSkip ? controller.skip : null,
                 icon: const Icon(Icons.skip_next),
               ),
             ],
@@ -1597,6 +1929,12 @@ class _StagePalette {
         ? darkBackground
         : lightBackground;
   }
+}
+
+Color _contrastOn(Color color) {
+  return ThemeData.estimateBrightnessForColor(color) == Brightness.dark
+      ? Colors.white
+      : Colors.black;
 }
 
 _StagePalette _modePalette(TimerMode mode) {

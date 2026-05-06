@@ -73,6 +73,39 @@ void main() {
     expect(resumed.timer.endsAt, start.add(const Duration(minutes: 30)));
   });
 
+  test('skip only moves a running break back into a running focus', () {
+    final start = DateTime(2026, 1, 1, 9);
+    final breakReady = TomatoData.initial().copyWith(
+      timer: engine.snapshotForMode(TimerMode.shortBreak, const AppSettings()),
+    );
+    final runningBreak = engine.start(breakReady, at: start);
+
+    final skipped = engine.skip(
+      runningBreak,
+      at: start.add(const Duration(minutes: 2)),
+    );
+
+    expect(skipped.timer.mode, TimerMode.focus);
+    expect(skipped.timer.phase, TimerPhase.running);
+    expect(skipped.timer.remainingSeconds, 1500);
+    expect(skipped.timer.endsAt, start.add(const Duration(minutes: 27)));
+  });
+
+  test('skip does not skip a running focus session', () {
+    final start = DateTime(2026, 1, 1, 9);
+    final runningFocus = engine.start(TomatoData.initial(), at: start);
+
+    final skipped = engine.skip(
+      runningFocus,
+      at: start.add(const Duration(minutes: 2)),
+    );
+
+    expect(skipped.timer.mode, TimerMode.focus);
+    expect(skipped.timer.phase, TimerPhase.running);
+    expect(skipped.timer.remainingSeconds, 1380);
+    expect(skipped.sessions, isEmpty);
+  });
+
   test(
     'stop records focused time after one minute without completing tomato',
     () {

@@ -146,11 +146,11 @@ void main() {
     await tester.pump(const Duration(seconds: 5));
     await tester.pump();
 
-    expect(find.byType(TimerNumberDisplay), findsOneWidget);
+    expect(find.byType(TimerProgressRing), findsOneWidget);
     expect(hasIgnoringAncestor(tester, find.text('停止')), isTrue);
     expect(hasIgnoringAncestor(tester, find.text('统计')), isTrue);
 
-    await tester.tap(find.byType(TimerNumberDisplay));
+    await tester.tap(find.byType(TimerProgressRing));
     await tester.pump();
 
     expect(hasIgnoringAncestor(tester, find.text('停止')), isFalse);
