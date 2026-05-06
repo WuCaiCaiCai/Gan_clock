@@ -5,6 +5,15 @@ import 'package:tomato_clock/timer_engine.dart';
 void main() {
   const engine = TomatoTimerEngine();
 
+  test('settings default to vibration only for phase changes', () {
+    const settings = AppSettings();
+
+    expect(settings.completionSoundEnabled, isFalse);
+    expect(settings.completionHapticsEnabled, isTrue);
+    expect(AppSettings.fromJson(const {}).completionSoundEnabled, isFalse);
+    expect(AppSettings.fromJson(const {}).completionHapticsEnabled, isTrue);
+  });
+
   test('completes focus session and advances to short break', () {
     final start = DateTime(2026, 1, 1, 9);
     final data = TomatoData.initial().copyWith(

@@ -12,11 +12,11 @@ class SystemCompletionFeedback implements CompletionFeedback {
   @override
   Future<void> notify(TimerMode completedMode, AppSettings settings) async {
     final futures = <Future<void>>[];
+    if (settings.completionHapticsEnabled) {
+      futures.add(HapticFeedback.vibrate());
+    }
     if (settings.completionSoundEnabled) {
       futures.add(SystemSound.play(SystemSoundType.alert));
-    }
-    if (settings.completionHapticsEnabled) {
-      futures.add(HapticFeedback.mediumImpact());
     }
     await Future.wait(futures);
   }

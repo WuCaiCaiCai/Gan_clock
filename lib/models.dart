@@ -108,7 +108,7 @@ class AppSettings {
     this.shortBreakMinutes = 5,
     this.longBreakMinutes = 15,
     this.roundsBeforeLongBreak = 4,
-    this.completionSoundEnabled = true,
+    this.completionSoundEnabled = false,
     this.completionHapticsEnabled = true,
     this.webDav = const WebDavSettings(),
   });
@@ -170,7 +170,7 @@ class AppSettings {
         12,
         4,
       ),
-      completionSoundEnabled: value['completionSoundEnabled'] as bool? ?? true,
+      completionSoundEnabled: value['completionSoundEnabled'] as bool? ?? false,
       completionHapticsEnabled:
           value['completionHapticsEnabled'] as bool? ?? true,
       webDav: WebDavSettings.fromJson(value['webDav']),

@@ -614,7 +614,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
             secondary: const Icon(Icons.notifications_active_outlined),
-            title: const Text('完成音效'),
+            title: const Text('切换音效'),
             value: settings.completionSoundEnabled,
             onChanged: (value) {
               controller.updateSettings(
@@ -625,7 +625,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
             secondary: const Icon(Icons.vibration),
-            title: const Text('完成触感'),
+            title: const Text('切换震动'),
             value: settings.completionHapticsEnabled,
             onChanged: (value) {
               controller.updateSettings(

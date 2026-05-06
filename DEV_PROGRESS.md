@@ -26,8 +26,8 @@
 - [x] TLS/网络错误处理
 
 ### 完成反馈
-- [x] 计时完成反馈 (`completion_feedback.dart`) — 系统提示音 + 触感反馈
-- [x] 完成反馈设置 — 音效/触感独立开关
+- [x] 阶段切换反馈 (`completion_feedback.dart`) — 默认手机震动，提示音可选
+- [x] 切换反馈设置 — 震动/音效独立开关
 
 ### 平台脚手架
 - [x] Android / iOS / Linux / macOS / Windows 平台目录就绪
@@ -42,7 +42,7 @@
 - [x] 计时引擎 — 纯 Dart，跨平台复用
 - [x] 主计时页面 — 圆环进度、开始/暂停/跳过按钮
 - [x] 模式切换 — 专注 / 短休息 / 长休息
-- [x] 计时完成通知/音效
+- [x] 计时完成通知/震动
 
 ### 原生层清理
 - [x] 计时逻辑从 Kotlin 移入 Dart
@@ -58,7 +58,7 @@
 - [x] 自定义时长 — 专注/短休/长休/长休间隔
 - [x] WebDAV 配置界面
 - [x] 手动同步按钮
-- [x] 完成音效/触感开关
+- [x] 切换震动/音效开关
 
 ### 跨平台适配
 - [ ] iOS 后台计时 (BGTaskScheduler)
@@ -71,6 +71,11 @@
 - [x] 性能优化 — 热力图 RepaintBoundary，原生桥接移除后减少平台调用
 
 ## 开发日志
+
+### 2026-05-06 震动提醒
+- 阶段切换提醒改为手机震动优先：默认关闭提示音、开启震动。
+- `completion_feedback.dart` 从 `HapticFeedback.mediumImpact()` 改为 `HapticFeedback.vibrate()`，更接近手机震动提醒。
+- 设置页文案改为“切换震动 / 切换音效”，明确用于专注与休息阶段切换。
 
 ### 2026-05-06 纯 Dart 收尾
 - 移除 Android Kotlin 源码：删除 `MainActivity.kt`、`TomatoOverlayService.kt`，Manifest 直接使用 Flutter `FlutterActivity`。

@@ -38,6 +38,11 @@ void main() {
     await tester.scrollUntilVisible(find.text('专注热力图'), 360);
     expect(find.text('专注热力图'), findsOneWidget);
 
+    await tester.tap(find.byIcon(Icons.settings_outlined));
+    await tester.pumpAndSettle();
+    expect(find.text('切换震动'), findsOneWidget);
+    expect(find.text('切换音效'), findsOneWidget);
+
     controller.dispose();
   });
 }
