@@ -96,7 +96,9 @@ class TomatoHomePage extends StatefulWidget {
 
 class _TomatoHomePageState extends State<TomatoHomePage> {
   AppController? _controller;
+  Timer? _idleChromeTimer;
   int _selectedIndex = 0;
+  bool _chromeHidden = false;
 
   @override
   void didChangeDependencies() {
@@ -105,15 +107,22 @@ class _TomatoHomePageState extends State<TomatoHomePage> {
     if (_controller == next) {
       return;
     }
-    _controller?.removeListener(_showControllerMessage);
+    _controller?.removeListener(_handleControllerChanged);
     _controller = next;
-    _controller?.addListener(_showControllerMessage);
+    _controller?.addListener(_handleControllerChanged);
+    _syncIdleChrome();
   }
 
   @override
   void dispose() {
-    _controller?.removeListener(_showControllerMessage);
+    _controller?.removeListener(_handleControllerChanged);
+    _idleChromeTimer?.cancel();
     super.dispose();
+  }
+
+  void _handleControllerChanged() {
+    _showControllerMessage();
+    _syncIdleChrome();
   }
 
   void _showControllerMessage() {
@@ -135,50 +144,121 @@ class _TomatoHomePageState extends State<TomatoHomePage> {
   Widget build(BuildContext context) {
     final controller = AppScope.watch(context);
     final data = controller.data;
+    final hideChrome =
+        _chromeHidden &&
+        _selectedIndex == 0 &&
+        data.timer.phase == TimerPhase.running;
 
-    return Scaffold(
-      appBar: AppBar(title: Text(_pageTitle)),
-      body: SafeArea(
-        child: controller.loading
-            ? const Center(child: CircularProgressIndicator())
-            : IndexedStack(
-                index: _selectedIndex,
-                children: [
-                  _TimerPage(controller: controller, data: data),
-                  _StatsPage(data: data),
-                  _SettingsPage(
-                    controller: controller,
-                    settings: data.settings,
+    return Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerDown: (_) => _handleUserActivity(),
+      onPointerMove: (_) => _handleUserActivity(),
+      onPointerSignal: (_) => _handleUserActivity(),
+      child: Scaffold(
+        appBar: hideChrome ? null : AppBar(title: Text(_pageTitle)),
+        body: SafeArea(
+          child: controller.loading
+              ? const Center(child: CircularProgressIndicator())
+              : IndexedStack(
+                  index: _selectedIndex,
+                  children: [
+                    _TimerPage(
+                      controller: controller,
+                      data: data,
+                      quiet: hideChrome,
+                    ),
+                    _StatsPage(data: data),
+                    _SettingsPage(
+                      controller: controller,
+                      settings: data.settings,
+                    ),
+                  ],
+                ),
+        ),
+        bottomNavigationBar: hideChrome
+            ? null
+            : NavigationBar(
+                selectedIndex: _selectedIndex,
+                onDestinationSelected: (index) {
+                  setState(() {
+                    _selectedIndex = index;
+                    _chromeHidden = false;
+                  });
+                  _syncIdleChrome();
+                },
+                destinations: const [
+                  NavigationDestination(
+                    icon: Icon(Icons.timer_outlined),
+                    selectedIcon: Icon(Icons.timer),
+                    label: '番茄钟',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.bar_chart_outlined),
+                    selectedIcon: Icon(Icons.bar_chart),
+                    label: '统计',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.settings_outlined),
+                    selectedIcon: Icon(Icons.settings),
+                    label: '设置',
                   ),
                 ],
               ),
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _selectedIndex,
-        onDestinationSelected: (index) {
-          setState(() {
-            _selectedIndex = index;
-          });
-        },
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.timer_outlined),
-            selectedIcon: Icon(Icons.timer),
-            label: '番茄钟',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.bar_chart_outlined),
-            selectedIcon: Icon(Icons.bar_chart),
-            label: '统计',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.settings_outlined),
-            selectedIcon: Icon(Icons.settings),
-            label: '设置',
-          ),
-        ],
-      ),
     );
+  }
+
+  void _handleUserActivity() {
+    if (_chromeHidden) {
+      setState(() {
+        _chromeHidden = false;
+      });
+    }
+    _syncIdleChrome(restart: true);
+  }
+
+  void _syncIdleChrome({bool restart = false}) {
+    final controller = _controller;
+    if (controller == null || !mounted) {
+      return;
+    }
+    final settings = controller.data.settings;
+    final eligible =
+        _selectedIndex == 0 &&
+        controller.data.timer.phase == TimerPhase.running &&
+        !controller.loading;
+
+    if (!eligible) {
+      _idleChromeTimer?.cancel();
+      _idleChromeTimer = null;
+      if (_chromeHidden) {
+        setState(() {
+          _chromeHidden = false;
+        });
+      }
+      return;
+    }
+
+    if (_chromeHidden) {
+      return;
+    }
+
+    if (!restart && _idleChromeTimer != null) {
+      return;
+    }
+    _idleChromeTimer?.cancel();
+    _idleChromeTimer = Timer(Duration(seconds: settings.idleFocusSeconds), () {
+      if (!mounted) {
+        return;
+      }
+      final latest = _controller?.data;
+      if (_selectedIndex == 0 && latest?.timer.phase == TimerPhase.running) {
+        setState(() {
+          _chromeHidden = true;
+        });
+        _idleChromeTimer = null;
+      }
+    });
   }
 
   String get _pageTitle {
@@ -196,19 +276,33 @@ class _TomatoHomePageState extends State<TomatoHomePage> {
 }
 
 class _TimerPage extends StatelessWidget {
-  const _TimerPage({required this.controller, required this.data});
+  const _TimerPage({
+    required this.controller,
+    required this.data,
+    required this.quiet,
+  });
 
   final AppController controller;
   final TomatoData data;
+  final bool quiet;
 
   @override
   Widget build(BuildContext context) {
     final timer = data.timer;
+    if (quiet) {
+      return Center(
+        child: TimerProgressRing(
+          snapshot: timer,
+          color: _modeColor(timer.mode),
+        ),
+      );
+    }
+
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 560),
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
+          padding: const EdgeInsets.fromLTRB(20, 24, 20, 120),
           children: [
             _ModeSelector(
               selected: timer.mode,
@@ -217,7 +311,9 @@ class _TimerPage extends StatelessWidget {
             ),
             const SizedBox(height: 34),
             TimerProgressRing(snapshot: timer, color: _modeColor(timer.mode)),
-            const SizedBox(height: 28),
+            const SizedBox(height: 18),
+            _HitokotoLine(mode: timer.mode),
+            const SizedBox(height: 24),
             _TimerActions(controller: controller, phase: timer.phase),
           ],
         ),
@@ -273,7 +369,7 @@ class _SettingsPage extends StatelessWidget {
                     leading: const Icon(Icons.tune),
                     title: const Text('计时设置'),
                     subtitle: Text(
-                      '专注 ${settings.focusMinutes} 分钟 · 短休 ${settings.shortBreakMinutes} 分钟 · 长休 ${settings.longBreakMinutes} 分钟',
+                      '专注 ${settings.focusMinutes} 分钟 · 短休 ${settings.shortBreakMinutes} 分钟 · 长休 ${settings.longBreakMinutes} 分钟 · 静默 ${settings.idleFocusSeconds} 秒',
                     ),
                     trailing: const Icon(Icons.chevron_right),
                     onTap: () => _openTimerSettings(context),
@@ -372,6 +468,57 @@ class _ModeSelector extends StatelessWidget {
                 onChanged(values.single);
               }
             : null,
+      ),
+    );
+  }
+}
+
+class _HitokotoLine extends StatelessWidget {
+  const _HitokotoLine({required this.mode});
+
+  final TimerMode mode;
+
+  static const _lines = <TimerMode, List<String>>{
+    TimerMode.focus: [
+      '只处理眼前这一件事。',
+      '把注意力收回来，时间会变清楚。',
+      '慢一点，但不要停在原地。',
+      '先完成一小段，再判断下一步。',
+    ],
+    TimerMode.shortBreak: [
+      '起身，喝水，看看远处。',
+      '短暂离开屏幕，也是在继续。',
+      '让眼睛休息一下。',
+      '五分钟足够重新换一口气。',
+    ],
+    TimerMode.longBreak: [
+      '长休息不是中断，是恢复。',
+      '走动一下，让身体接上节奏。',
+      '把刚才完成的事放下片刻。',
+      '休息之后，再回到清楚的开始。',
+    ],
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final messages = _lines[mode]!;
+    final now = DateTime.now();
+    final day = DateTime(now.year, now.month, now.day);
+    final dayIndex = day.difference(DateTime(now.year)).inDays;
+    final message = messages[(dayIndex + mode.index * 2) % messages.length];
+    final color = Theme.of(context).colorScheme.onSurfaceVariant;
+
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 220),
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeInCubic,
+      child: Text(
+        message,
+        key: ValueKey('${mode.name}-$message'),
+        textAlign: TextAlign.center,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: color),
       ),
     );
   }
@@ -605,6 +752,7 @@ class _TimerActions extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final running = phase == TimerPhase.running;
+    final canStop = phase != TimerPhase.idle;
     return Wrap(
       alignment: WrapAlignment.center,
       spacing: 12,
@@ -616,9 +764,9 @@ class _TimerActions extends StatelessWidget {
           label: Text(running ? '暂停' : '开始'),
         ),
         OutlinedButton.icon(
-          onPressed: controller.reset,
-          icon: const Icon(Icons.replay),
-          label: const Text('重置'),
+          onPressed: canStop ? controller.stop : null,
+          icon: const Icon(Icons.stop_circle_outlined),
+          label: const Text('停止'),
         ),
         OutlinedButton.icon(
           onPressed: controller.skip,
@@ -839,6 +987,19 @@ class _TimerSettingsSheet extends StatelessWidget {
             onChanged: (value) {
               controller.updateSettings(
                 settings.copyWith(roundsBeforeLongBreak: value),
+              );
+            },
+          ),
+          NumberStepper(
+            icon: Icons.visibility_off_outlined,
+            label: '静默显示',
+            value: settings.idleFocusSeconds,
+            min: 5,
+            max: 600,
+            suffix: '秒',
+            onChanged: (value) {
+              controller.updateSettings(
+                settings.copyWith(idleFocusSeconds: value),
               );
             },
           ),

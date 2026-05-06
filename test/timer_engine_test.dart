@@ -10,8 +10,10 @@ void main() {
 
     expect(settings.completionSoundEnabled, isFalse);
     expect(settings.completionHapticsEnabled, isTrue);
+    expect(settings.idleFocusSeconds, 30);
     expect(AppSettings.fromJson(const {}).completionSoundEnabled, isFalse);
     expect(AppSettings.fromJson(const {}).completionHapticsEnabled, isTrue);
+    expect(AppSettings.fromJson(const {}).idleFocusSeconds, 30);
   });
 
   test('completes focus session and advances to short break', () {
@@ -63,14 +65,32 @@ void main() {
     expect(resumed.timer.endsAt, start.add(const Duration(minutes: 30)));
   });
 
+  test('stop cancels current timer without recording a session', () {
+    final start = DateTime(2026, 1, 1, 9);
+    final running = engine.start(TomatoData.initial(), at: start);
+
+    final stopped = engine.stop(
+      running,
+      at: start.add(const Duration(minutes: 5)),
+    );
+
+    expect(stopped.timer.phase, TimerPhase.idle);
+    expect(stopped.timer.remainingSeconds, 1500);
+    expect(stopped.timer.startedAt, isNull);
+    expect(stopped.timer.endsAt, isNull);
+    expect(stopped.sessions, isEmpty);
+  });
+
   test('settings serialize completion feedback switches', () {
     final settings = const AppSettings(
+      idleFocusSeconds: 75,
       completionSoundEnabled: false,
       completionHapticsEnabled: false,
     );
 
     final decoded = AppSettings.fromJson(settings.toJson());
 
+    expect(decoded.idleFocusSeconds, 75);
     expect(decoded.completionSoundEnabled, isFalse);
     expect(decoded.completionHapticsEnabled, isFalse);
   });

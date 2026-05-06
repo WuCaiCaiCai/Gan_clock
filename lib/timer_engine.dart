@@ -83,6 +83,10 @@ class TomatoTimerEngine {
     );
   }
 
+  TomatoData stop(TomatoData data, {DateTime? at}) {
+    return reset(data, at: at);
+  }
+
   TomatoData selectMode(TomatoData data, TimerMode mode, {DateTime? at}) {
     final now = at ?? DateTime.now();
     return data.copyWith(

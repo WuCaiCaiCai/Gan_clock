@@ -20,8 +20,23 @@ class MemoryStore implements TomatoStore {
   }
 }
 
+Future<void> usePhoneSurface(WidgetTester tester) async {
+  await tester.binding.setSurfaceSize(const Size(400, 900));
+  addTearDown(() async {
+    await tester.binding.setSurfaceSize(null);
+  });
+}
+
 void main() {
+  const focusHitokotoLines = [
+    '只处理眼前这一件事。',
+    '把注意力收回来，时间会变清楚。',
+    '慢一点，但不要停在原地。',
+    '先完成一小段，再判断下一步。',
+  ];
+
   testWidgets('shows tomato timer controls', (WidgetTester tester) async {
+    await usePhoneSurface(tester);
     final controller = AppController(
       storage: MemoryStore(TomatoData.initial()),
       completionFeedback: const NoopCompletionFeedback(),
@@ -33,13 +48,28 @@ void main() {
     expect(find.text('番茄钟'), findsWidgets);
     expect(find.text('25:00'), findsOneWidget);
     expect(find.text('开始'), findsOneWidget);
+    expect(find.text('停止'), findsOneWidget);
     expect(find.byIcon(Icons.play_arrow), findsOneWidget);
+    expect(
+      focusHitokotoLines.any((line) => find.text(line).evaluate().isNotEmpty),
+      isTrue,
+    );
     expect(find.text('专注热力图'), findsNothing);
 
-    await tester.tap(find.text('开始'));
+    final startButton = find.widgetWithText(FilledButton, '开始');
+    await tester.ensureVisible(startButton);
+    await tester.tap(startButton);
     await tester.pump(const Duration(milliseconds: 120));
     expect(find.text('暂停'), findsOneWidget);
     expect(find.byIcon(Icons.pause), findsOneWidget);
+    expect(find.text('停止'), findsOneWidget);
+
+    final stopButton = find.widgetWithText(OutlinedButton, '停止');
+    await tester.ensureVisible(stopButton);
+    await tester.tap(stopButton);
+    await tester.pump(const Duration(milliseconds: 120));
+    expect(find.text('开始'), findsOneWidget);
+    expect(find.text('25:00'), findsOneWidget);
 
     await tester.tap(find.text('统计'));
     await tester.pumpAndSettle();
@@ -55,6 +85,44 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('切换震动'), findsOneWidget);
     expect(find.text('切换音效'), findsOneWidget);
+
+    controller.dispose();
+  });
+
+  testWidgets('hides chrome after timer page sits idle', (
+    WidgetTester tester,
+  ) async {
+    await usePhoneSurface(tester);
+    final data = TomatoData.initial().copyWith(
+      settings: const AppSettings(idleFocusSeconds: 5),
+    );
+    final controller = AppController(
+      storage: MemoryStore(data),
+      completionFeedback: const NoopCompletionFeedback(),
+    );
+
+    await tester.pumpWidget(TomatoApp(controller: controller));
+    await tester.pump();
+    final startButton = find.widgetWithText(FilledButton, '开始');
+    await tester.ensureVisible(startButton);
+    await tester.tap(startButton);
+    await tester.pump(const Duration(milliseconds: 120));
+
+    expect(find.text('停止'), findsOneWidget);
+    expect(find.text('统计'), findsOneWidget);
+
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pump();
+
+    expect(find.byType(TimerProgressRing), findsOneWidget);
+    expect(find.text('停止'), findsNothing);
+    expect(find.text('统计'), findsNothing);
+
+    await tester.tap(find.byType(TimerProgressRing));
+    await tester.pump();
+
+    expect(find.text('停止'), findsOneWidget);
+    expect(find.text('统计'), findsOneWidget);
 
     controller.dispose();
   });

@@ -108,6 +108,7 @@ class AppSettings {
     this.shortBreakMinutes = 5,
     this.longBreakMinutes = 15,
     this.roundsBeforeLongBreak = 4,
+    this.idleFocusSeconds = 30,
     this.completionSoundEnabled = false,
     this.completionHapticsEnabled = true,
     this.webDav = const WebDavSettings(),
@@ -117,6 +118,7 @@ class AppSettings {
   final int shortBreakMinutes;
   final int longBreakMinutes;
   final int roundsBeforeLongBreak;
+  final int idleFocusSeconds;
   final bool completionSoundEnabled;
   final bool completionHapticsEnabled;
   final WebDavSettings webDav;
@@ -126,6 +128,7 @@ class AppSettings {
     int? shortBreakMinutes,
     int? longBreakMinutes,
     int? roundsBeforeLongBreak,
+    int? idleFocusSeconds,
     bool? completionSoundEnabled,
     bool? completionHapticsEnabled,
     WebDavSettings? webDav,
@@ -136,6 +139,7 @@ class AppSettings {
       longBreakMinutes: longBreakMinutes ?? this.longBreakMinutes,
       roundsBeforeLongBreak:
           roundsBeforeLongBreak ?? this.roundsBeforeLongBreak,
+      idleFocusSeconds: idleFocusSeconds ?? this.idleFocusSeconds,
       completionSoundEnabled:
           completionSoundEnabled ?? this.completionSoundEnabled,
       completionHapticsEnabled:
@@ -150,6 +154,7 @@ class AppSettings {
       'shortBreakMinutes': shortBreakMinutes,
       'longBreakMinutes': longBreakMinutes,
       'roundsBeforeLongBreak': roundsBeforeLongBreak,
+      'idleFocusSeconds': idleFocusSeconds,
       'completionSoundEnabled': completionSoundEnabled,
       'completionHapticsEnabled': completionHapticsEnabled,
       'webDav': webDav.toJson(),
@@ -170,6 +175,7 @@ class AppSettings {
         12,
         4,
       ),
+      idleFocusSeconds: _boundedInt(value['idleFocusSeconds'], 5, 600, 30),
       completionSoundEnabled: value['completionSoundEnabled'] as bool? ?? false,
       completionHapticsEnabled:
           value['completionHapticsEnabled'] as bool? ?? true,
