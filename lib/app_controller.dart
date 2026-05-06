@@ -116,6 +116,21 @@ class AppController extends ChangeNotifier {
     await _syncNow(silent: false, force: true);
   }
 
+  Future<void> createLocalBackup() async {
+    try {
+      await _storage.save(_data);
+      final storage = _storage;
+      final path = storage is AppStorage
+          ? await storage.createLocalBackup(_data)
+          : await AppStorage().createLocalBackup(_data);
+      _message = '本地备份已保存：$path';
+    } on Object {
+      _message = '本地备份失败';
+    } finally {
+      _notify();
+    }
+  }
+
   Future<void> syncBeforeBackground() async {
     if (!_data.settings.backupAutoSyncEnabled) {
       return;

@@ -191,10 +191,12 @@ class _TomatoHomePageState extends State<TomatoHomePage>
   AppController? _controller;
   Timer? _idleChromeTimer;
   Timer? _pipChromeRestoreTimer;
+  Timer? _pipReturnTimer;
   int _selectedIndex = 0;
   bool _chromeHidden = false;
   bool _inPictureInPicture = false;
   bool _pipTransitioning = false;
+  bool _returningFromPictureInPicture = false;
   bool _ignoreNextQuietTap = false;
 
   @override
@@ -227,6 +229,7 @@ class _TomatoHomePageState extends State<TomatoHomePage>
     _controller?.removeListener(_handleControllerChanged);
     _idleChromeTimer?.cancel();
     _pipChromeRestoreTimer?.cancel();
+    _pipReturnTimer?.cancel();
     unawaited(PlatformControls.setKeepScreenOn(false));
     unawaited(
       PlatformControls.setPipState(
@@ -248,12 +251,7 @@ class _TomatoHomePageState extends State<TomatoHomePage>
       _prepareForPictureInPicture();
     } else if (state == AppLifecycleState.resumed &&
         (_inPictureInPicture || _pipTransitioning)) {
-      setState(() {
-        _inPictureInPicture = false;
-        _pipTransitioning = false;
-        _chromeHidden = false;
-      });
-      _syncIdleChrome(restart: true);
+      _beginPictureInPictureReturn();
     }
   }
 
@@ -313,6 +311,7 @@ class _TomatoHomePageState extends State<TomatoHomePage>
                               data: data,
                               quiet: hideChrome,
                               inPictureInPicture: true,
+                              expandFromPictureInPicture: false,
                             )
                           : SafeArea(
                               bottom: false,
@@ -321,6 +320,8 @@ class _TomatoHomePageState extends State<TomatoHomePage>
                                 data: data,
                                 quiet: hideChrome,
                                 inPictureInPicture: false,
+                                expandFromPictureInPicture:
+                                    _returningFromPictureInPicture,
                               ),
                             ),
                     ),
@@ -342,20 +343,14 @@ class _TomatoHomePageState extends State<TomatoHomePage>
     required TomatoData data,
     required bool quiet,
     required bool inPictureInPicture,
+    required bool expandFromPictureInPicture,
   }) {
     return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 180),
+      duration: const Duration(milliseconds: 95),
       switchInCurve: Curves.easeOutCubic,
       switchOutCurve: Curves.easeInCubic,
       transitionBuilder: (child, animation) {
-        final position = Tween<Offset>(
-          begin: const Offset(0.03, 0),
-          end: Offset.zero,
-        ).animate(animation);
-        return FadeTransition(
-          opacity: animation,
-          child: SlideTransition(position: position, child: child),
-        );
+        return FadeTransition(opacity: animation, child: child);
       },
       child: KeyedSubtree(
         key: ValueKey('$_selectedIndex-$inPictureInPicture'),
@@ -364,6 +359,7 @@ class _TomatoHomePageState extends State<TomatoHomePage>
           data: data,
           quiet: quiet,
           inPictureInPicture: inPictureInPicture,
+          expandFromPictureInPicture: expandFromPictureInPicture,
         ),
       ),
     );
@@ -374,6 +370,7 @@ class _TomatoHomePageState extends State<TomatoHomePage>
     required TomatoData data,
     required bool quiet,
     required bool inPictureInPicture,
+    required bool expandFromPictureInPicture,
   }) {
     switch (_selectedIndex) {
       case 0:
@@ -382,21 +379,21 @@ class _TomatoHomePageState extends State<TomatoHomePage>
           data: data,
           quiet: quiet,
           inPictureInPicture: inPictureInPicture,
+          expandFromPictureInPicture: expandFromPictureInPicture,
           onRequestQuiet: _requestQuiet,
           onEnterPictureInPicture: _enterPictureInPicture,
         );
       case 1:
         return _StatsPage(data: data);
       case 2:
-        return _SettingsPage(settings: data.settings);
-      case 3:
-        return _BackupPage(controller: controller, settings: data.settings);
+        return _SettingsPage(controller: controller, settings: data.settings);
       default:
         return _TimerPage(
           controller: controller,
           data: data,
           quiet: quiet,
           inPictureInPicture: inPictureInPicture,
+          expandFromPictureInPicture: expandFromPictureInPicture,
           onRequestQuiet: _requestQuiet,
           onEnterPictureInPicture: _enterPictureInPicture,
         );
@@ -448,6 +445,7 @@ class _TomatoHomePageState extends State<TomatoHomePage>
     _idleChromeTimer?.cancel();
     _idleChromeTimer = null;
     _pipChromeRestoreTimer?.cancel();
+    _pipReturnTimer?.cancel();
     if (_selectedIndex == 0 && _chromeHidden && _pipTransitioning) {
       return;
     }
@@ -455,6 +453,7 @@ class _TomatoHomePageState extends State<TomatoHomePage>
       _selectedIndex = 0;
       _chromeHidden = true;
       _pipTransitioning = true;
+      _returningFromPictureInPicture = false;
     });
   }
 
@@ -542,28 +541,51 @@ class _TomatoHomePageState extends State<TomatoHomePage>
   }
 
   void _handlePictureInPictureChanged(bool enabled) {
-    if (!mounted || _inPictureInPicture == enabled) {
+    if (!mounted) {
+      return;
+    }
+    if (_inPictureInPicture == enabled && !(!enabled && _pipTransitioning)) {
+      return;
+    }
+    if (!enabled) {
+      _beginPictureInPictureReturn();
       return;
     }
     setState(() {
       _inPictureInPicture = enabled;
       _pipTransitioning = false;
-      if (enabled) {
-        _selectedIndex = 0;
-        _chromeHidden = true;
-      } else {
-        _chromeHidden = true;
-      }
+      _returningFromPictureInPicture = false;
+      _selectedIndex = 0;
+      _chromeHidden = true;
     });
-    if (!enabled) {
-      _restoreChromeAfterPictureInPicture();
-    }
+    _syncIdleChrome(restart: true);
+  }
+
+  void _beginPictureInPictureReturn() {
+    _pipChromeRestoreTimer?.cancel();
+    _pipReturnTimer?.cancel();
+    setState(() {
+      _selectedIndex = 0;
+      _inPictureInPicture = false;
+      _pipTransitioning = false;
+      _chromeHidden = true;
+      _returningFromPictureInPicture = true;
+    });
+    _pipReturnTimer = Timer(const Duration(milliseconds: 520), () {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _returningFromPictureInPicture = false;
+      });
+    });
+    _restoreChromeAfterPictureInPicture();
     _syncIdleChrome(restart: true);
   }
 
   void _restoreChromeAfterPictureInPicture() {
     _pipChromeRestoreTimer?.cancel();
-    _pipChromeRestoreTimer = Timer(const Duration(milliseconds: 360), () {
+    _pipChromeRestoreTimer = Timer(const Duration(milliseconds: 560), () {
       if (!mounted || _selectedIndex != 0 || _controller == null) {
         return;
       }
@@ -599,6 +621,7 @@ class _TimerPage extends StatelessWidget {
     required this.data,
     required this.quiet,
     required this.inPictureInPicture,
+    required this.expandFromPictureInPicture,
     required this.onRequestQuiet,
     required this.onEnterPictureInPicture,
   });
@@ -607,6 +630,7 @@ class _TimerPage extends StatelessWidget {
   final TomatoData data;
   final bool quiet;
   final bool inPictureInPicture;
+  final bool expandFromPictureInPicture;
   final VoidCallback onRequestQuiet;
   final VoidCallback onEnterPictureInPicture;
 
@@ -642,9 +666,12 @@ class _TimerPage extends StatelessWidget {
               Center(
                 child: Transform.translate(
                   offset: Offset(0, contentOffset),
-                  child: TimerProgressRing(
-                    snapshot: timer,
-                    maxDimension: maxRingDimension,
+                  child: _PipReturnScale(
+                    active: expandFromPictureInPicture,
+                    child: TimerProgressRing(
+                      snapshot: timer,
+                      maxDimension: maxRingDimension,
+                    ),
                   ),
                 ),
               ),
@@ -750,13 +777,6 @@ class _FloatingDock extends StatelessWidget {
                         onTap: () => onSelected(1),
                       ),
                       _DockItem(
-                        icon: Icons.cloud_sync_outlined,
-                        selectedIcon: Icons.cloud_done,
-                        label: '备份',
-                        selected: selectedIndex == 3,
-                        onTap: () => onSelected(3),
-                      ),
-                      _DockItem(
                         icon: Icons.settings_outlined,
                         selectedIcon: Icons.settings,
                         label: '设置',
@@ -805,7 +825,7 @@ class _DockItem extends StatelessWidget {
             highlightColor: Colors.transparent,
             splashColor: Colors.transparent,
             child: AnimatedContainer(
-              duration: const Duration(milliseconds: 140),
+              duration: const Duration(milliseconds: 95),
               curve: Curves.easeOutCubic,
               alignment: Alignment.center,
               padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -886,6 +906,29 @@ class _ChromeFade extends StatelessWidget {
   }
 }
 
+class _PipReturnScale extends StatelessWidget {
+  const _PipReturnScale({required this.active, required this.child});
+
+  final bool active;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!active) {
+      return child;
+    }
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: 0.62, end: 1),
+      duration: const Duration(milliseconds: 520),
+      curve: Curves.easeOutCubic,
+      child: child,
+      builder: (context, scale, child) {
+        return Transform.scale(scale: scale, child: child);
+      },
+    );
+  }
+}
+
 class _PhasePill extends StatelessWidget {
   const _PhasePill({required this.mode, required this.phase});
 
@@ -948,8 +991,9 @@ class _StatsPage extends StatelessWidget {
 }
 
 class _SettingsPage extends StatelessWidget {
-  const _SettingsPage({required this.settings});
+  const _SettingsPage({required this.controller, required this.settings});
 
+  final AppController controller;
   final AppSettings settings;
 
   @override
@@ -990,6 +1034,18 @@ class _SettingsPage extends StatelessWidget {
                     trailing: const Icon(Icons.chevron_right),
                     onTap: () => _openFeedbackSettings(context),
                   ),
+                  const Divider(height: 1, indent: 56),
+                  ListTile(
+                    leading: const Icon(Icons.backup_outlined),
+                    title: const Text('备份'),
+                    subtitle: Text(
+                      settings.webDav.isConfigured
+                          ? 'WebDAV · 本地备份 · 自动同步'
+                          : '本地备份 · 配置 WebDAV 后自动同步',
+                    ),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => _openBackupSettings(context),
+                  ),
                 ],
               ),
             ),
@@ -1021,6 +1077,29 @@ class _SettingsPage extends StatelessWidget {
       context: context,
       showDragHandle: true,
       builder: (_) => const _AppearanceSettingsSheet(),
+    );
+  }
+
+  void _openBackupSettings(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (_) {
+        final height = MediaQuery.sizeOf(context).height * 0.86;
+        return SizedBox(
+          height: height,
+          child: AnimatedBuilder(
+            animation: controller,
+            builder: (context, _) {
+              return _BackupPage(
+                controller: controller,
+                settings: controller.data.settings,
+              );
+            },
+          ),
+        );
+      },
     );
   }
 }
@@ -1090,6 +1169,11 @@ class _BackupPage extends StatelessWidget {
                               : null,
                           icon: const Icon(Icons.sync),
                           label: const Text('立即同步'),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: controller.createLocalBackup,
+                          icon: const Icon(Icons.save_alt_outlined),
+                          label: const Text('本地备份'),
                         ),
                         OutlinedButton.icon(
                           onPressed: controller.syncing
@@ -1325,11 +1409,15 @@ class TimerProgressRing extends StatefulWidget {
   const TimerProgressRing({
     required this.snapshot,
     required this.maxDimension,
+    this.compact = false,
+    this.surfaceKey,
     super.key,
   });
 
   final TimerSnapshot snapshot;
   final double maxDimension;
+  final bool compact;
+  final Key? surfaceKey;
 
   @override
   State<TimerProgressRing> createState() => _TimerProgressRingState();
@@ -1412,8 +1500,23 @@ class _TimerProgressRingState extends State<TimerProgressRing>
     return LayoutBuilder(
       builder: (context, constraints) {
         final shortest = math.min(constraints.maxWidth, constraints.maxHeight);
-        final available = math.max(180.0, shortest - 48);
+        final edgeReserve = widget.compact ? 0.0 : 48.0;
+        final minDimension = widget.compact ? 84.0 : 180.0;
+        final available = math.max(minDimension, shortest - edgeReserve);
         final dimension = math.min(widget.maxDimension, available);
+        final stroke = widget.compact
+            ? (dimension * 0.072).clamp(7.0, 13.0).toDouble()
+            : 18.0;
+        final centerPadding = widget.compact
+            ? (dimension * 0.24).clamp(22.0, 42.0).toDouble()
+            : 42.0;
+        final clockSize = widget.compact
+            ? (dimension *
+                      (widget.snapshot.remainingSeconds >= 3600 ? 0.16 : 0.21))
+                  .clamp(18.0, 42.0)
+                  .toDouble()
+            : null;
+        final compactTextColor = _contrastOn(palette.backgroundFor(context));
 
         return Center(
           child: AnimatedBuilder(
@@ -1432,6 +1535,7 @@ class _TimerProgressRingState extends State<TimerProgressRing>
               curve: Curves.easeOutCubic,
               builder: (context, value, child) {
                 return SizedBox.square(
+                  key: widget.surfaceKey,
                   dimension: dimension,
                   child: Stack(
                     fit: StackFit.expand,
@@ -1447,26 +1551,29 @@ class _TimerProgressRingState extends State<TimerProgressRing>
                                 scheme.brightness == Brightness.dark ? 76 : 52,
                               ),
                               haloOpacity: _haloAnimation.value,
+                              strokeWidth: stroke,
                             ),
                           );
                         },
                       ),
                       Center(
                         child: Padding(
-                          padding: const EdgeInsets.all(42),
+                          padding: EdgeInsets.all(centerPadding),
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              AnimatedSwitcher(
-                                duration: const Duration(milliseconds: 180),
-                                child: Icon(
-                                  _modeIcon(widget.snapshot.mode),
-                                  key: ValueKey(widget.snapshot.mode),
-                                  color: palette.accent,
-                                  size: 30,
+                              if (!widget.compact) ...[
+                                AnimatedSwitcher(
+                                  duration: const Duration(milliseconds: 180),
+                                  child: Icon(
+                                    _modeIcon(widget.snapshot.mode),
+                                    key: ValueKey(widget.snapshot.mode),
+                                    color: palette.accent,
+                                    size: 30,
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(height: 12),
+                                const SizedBox(height: 12),
+                              ],
                               FittedBox(
                                 fit: BoxFit.scaleDown,
                                 child: Text(
@@ -1476,26 +1583,31 @@ class _TimerProgressRingState extends State<TimerProgressRing>
                                   style: textTheme.displayMedium?.copyWith(
                                     height: 0.96,
                                     letterSpacing: 0,
+                                    fontSize: clockSize,
                                     fontWeight: FontWeight.w800,
-                                    color: scheme.onSurface,
+                                    color: widget.compact
+                                        ? compactTextColor
+                                        : scheme.onSurface,
                                     fontFeatures: const [
                                       FontFeature.tabularFigures(),
                                     ],
                                   ),
                                 ),
                               ),
-                              const SizedBox(height: 8),
-                              AnimatedSwitcher(
-                                duration: const Duration(milliseconds: 180),
-                                child: Text(
-                                  _phaseLabel(widget.snapshot.phase),
-                                  key: ValueKey(widget.snapshot.phase),
-                                  style: textTheme.titleSmall?.copyWith(
-                                    color: scheme.onSurfaceVariant,
-                                    letterSpacing: 0,
+                              if (!widget.compact) ...[
+                                const SizedBox(height: 8),
+                                AnimatedSwitcher(
+                                  duration: const Duration(milliseconds: 180),
+                                  child: Text(
+                                    _phaseLabel(widget.snapshot.phase),
+                                    key: ValueKey(widget.snapshot.phase),
+                                    style: textTheme.titleSmall?.copyWith(
+                                      color: scheme.onSurfaceVariant,
+                                      letterSpacing: 0,
+                                    ),
                                   ),
                                 ),
-                              ),
+                              ],
                             ],
                           ),
                         ),
@@ -1518,16 +1630,18 @@ class _RingPainter extends CustomPainter {
     required this.color,
     required this.trackColor,
     required this.haloOpacity,
+    required this.strokeWidth,
   });
 
   final double progress;
   final Color color;
   final Color trackColor;
   final double haloOpacity;
+  final double strokeWidth;
 
   @override
   void paint(Canvas canvas, Size size) {
-    const stroke = 18.0;
+    final stroke = strokeWidth;
     final rect =
         Offset(stroke / 2, stroke / 2) &
         Size(size.width - stroke, size.height - stroke);
@@ -1543,7 +1657,7 @@ class _RingPainter extends CustomPainter {
       ..color = color;
     final halo = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 28
+      ..strokeWidth = stroke * 1.55
       ..strokeCap = StrokeCap.round
       ..color = color.withAlpha((haloOpacity * 36).round());
 
@@ -1565,7 +1679,8 @@ class _RingPainter extends CustomPainter {
     return oldDelegate.progress != progress ||
         oldDelegate.color != color ||
         oldDelegate.trackColor != trackColor ||
-        oldDelegate.haloOpacity != haloOpacity;
+        oldDelegate.haloOpacity != haloOpacity ||
+        oldDelegate.strokeWidth != strokeWidth;
   }
 }
 
@@ -1578,16 +1693,6 @@ class PipTimerBox extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = _modePalette(snapshot.mode);
     final background = palette.backgroundFor(context);
-    final tileColor = palette.accent;
-    final onTile = _contrastOn(tileColor);
-    final darkText =
-        ThemeData.estimateBrightnessForColor(onTile) == Brightness.dark;
-    final maskColor = darkText
-        ? Colors.white.withAlpha(48)
-        : Colors.black.withAlpha(42);
-    final shadeColor = darkText
-        ? Colors.black.withAlpha(18)
-        : Colors.white.withAlpha(20);
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -1596,79 +1701,21 @@ class PipTimerBox extends StatelessWidget {
           constraints.maxHeight.isFinite ? constraints.maxHeight : 240,
         );
         final safeShortest = math.max(96.0, shortest);
-        final outerPadding = (safeShortest * 0.055).clamp(6.0, 14.0);
-        final radius = (safeShortest * 0.10).clamp(12.0, 24.0);
-        final innerPadding = (safeShortest * 0.11).clamp(12.0, 28.0);
-        final fontSize =
-            (safeShortest * (snapshot.remainingSeconds >= 3600 ? 0.23 : 0.30))
-                .clamp(30.0, 74.0);
+        final outerPadding = (safeShortest * 0.07).clamp(8.0, 18.0).toDouble();
+        final ringDimension = (safeShortest * 0.80)
+            .clamp(86.0, 220.0)
+            .toDouble();
 
         return ColoredBox(
           color: background,
           child: Padding(
             padding: EdgeInsets.all(outerPadding),
             child: Center(
-              child: AspectRatio(
-                aspectRatio: 1,
-                child: DecoratedBox(
-                  key: const ValueKey('pip_timer_box_surface'),
-                  decoration: BoxDecoration(
-                    color: tileColor,
-                    borderRadius: BorderRadius.circular(radius),
-                    border: Border.all(color: onTile.withAlpha(46), width: 1),
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(radius),
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        DecoratedBox(
-                          decoration: BoxDecoration(color: maskColor),
-                        ),
-                        Align(
-                          alignment: Alignment.topLeft,
-                          child: FractionallySizedBox(
-                            widthFactor: 0.72,
-                            heightFactor: 0.72,
-                            child: DecoratedBox(
-                              decoration: BoxDecoration(
-                                gradient: RadialGradient(
-                                  center: Alignment.topLeft,
-                                  radius: 1,
-                                  colors: [shadeColor, Colors.transparent],
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                        Padding(
-                          padding: EdgeInsets.all(innerPadding),
-                          child: Center(
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              child: Text(
-                                formatClock(snapshot.remainingSeconds),
-                                textAlign: TextAlign.center,
-                                softWrap: false,
-                                style: Theme.of(context).textTheme.displayMedium
-                                    ?.copyWith(
-                                      height: 0.92,
-                                      letterSpacing: 0,
-                                      fontSize: fontSize,
-                                      fontWeight: FontWeight.w800,
-                                      color: onTile,
-                                      fontFeatures: const [
-                                        FontFeature.tabularFigures(),
-                                      ],
-                                    ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+              child: TimerProgressRing(
+                snapshot: snapshot,
+                maxDimension: ringDimension,
+                compact: true,
+                surfaceKey: const ValueKey('pip_timer_ring_surface'),
               ),
             ),
           ),

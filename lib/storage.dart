@@ -42,6 +42,26 @@ class AppStorage implements TomatoStore {
     await temp.rename(file.path);
   }
 
+  Future<String> createLocalBackup(TomatoData data, {DateTime? at}) async {
+    final directory = await _resolveDataDirectory();
+    final backupDirectory = Directory(
+      '${directory.path}${Platform.pathSeparator}local_backups',
+    );
+    await backupDirectory.create(recursive: true);
+    final createdAt = at ?? DateTime.now();
+    final basePath =
+        '${backupDirectory.path}${Platform.pathSeparator}'
+        'gan_backup_${_timestamp(createdAt)}';
+    var file = File('$basePath.json');
+    var suffix = 1;
+    while (await file.exists()) {
+      file = File('${basePath}_$suffix.json');
+      suffix += 1;
+    }
+    await file.writeAsString(data.toPrettyJson(), flush: true);
+    return file.path;
+  }
+
   Future<File> _file() async {
     final cached = _dataFile;
     if (cached != null) {
@@ -98,4 +118,14 @@ class AppStorage implements TomatoStore {
       return false;
     }
   }
+}
+
+String _timestamp(DateTime value) {
+  final local = value.toLocal();
+  return '${local.year.toString().padLeft(4, '0')}'
+      '${local.month.toString().padLeft(2, '0')}'
+      '${local.day.toString().padLeft(2, '0')}_'
+      '${local.hour.toString().padLeft(2, '0')}'
+      '${local.minute.toString().padLeft(2, '0')}'
+      '${local.second.toString().padLeft(2, '0')}';
 }

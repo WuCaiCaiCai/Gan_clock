@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tomato_clock/app_controller.dart';
 import 'package:tomato_clock/completion_feedback.dart';
@@ -136,6 +138,42 @@ void main() {
       'local',
     ]);
     expect(store.data.sessions.map((item) => item.id), ['remote', 'local']);
+
+    controller.dispose();
+  });
+
+  test('creates a timestamped local backup file', () async {
+    final directory = await Directory.systemTemp.createTemp(
+      'tomato_clock_backup_test_',
+    );
+    addTearDown(() async {
+      if (await directory.exists()) {
+        await directory.delete(recursive: true);
+      }
+    });
+
+    final data = TomatoData.initial().copyWith(updatedAt: DateTime(2026, 1, 2));
+    final store = AppStorage(dataDirectory: directory.path);
+    await store.save(data);
+    final controller = AppController(
+      storage: store,
+      completionFeedback: const NoopCompletionFeedback(),
+    );
+
+    await controller.load();
+    await controller.createLocalBackup();
+
+    final backupDirectory = Directory(
+      '${directory.path}${Platform.pathSeparator}local_backups',
+    );
+    final files = backupDirectory
+        .listSync()
+        .whereType<File>()
+        .where((file) => file.path.endsWith('.json'))
+        .toList();
+    expect(files, hasLength(1));
+    expect(await files.single.readAsString(), contains('"schemaVersion": 1'));
+    expect(controller.takeMessage(), contains('本地备份已保存'));
 
     controller.dispose();
   });

@@ -114,7 +114,7 @@ public class MainActivity extends FlutterActivity {
         if (width <= 0 || height <= 0) {
             return null;
         }
-        int side = Math.min(width, height);
+        int side = Math.round(Math.min(width, height) * 0.72f);
         int left = Math.max(0, (width - side) / 2);
         int top = Math.max(0, (height - side) / 2);
         return new Rect(left, top, left + side, top + side);

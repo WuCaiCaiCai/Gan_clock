@@ -118,6 +118,7 @@ void main() {
 
     await tester.tap(find.text('备份'));
     await tester.pumpAndSettle();
+    expect(find.text('本地备份'), findsOneWidget);
     expect(find.text('立即同步'), findsOneWidget);
     expect(find.text('自动同步'), findsOneWidget);
     expect(find.text('WebDAV'), findsOneWidget);
@@ -232,7 +233,7 @@ void main() {
     controller.dispose();
   });
 
-  testWidgets('pip timer uses square numeric mask', (
+  testWidgets('pip timer uses square progress ring', (
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(
@@ -256,11 +257,12 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('24:30'), findsOneWidget);
+    expect(find.byType(TimerProgressRing), findsOneWidget);
     expect(find.byIcon(Icons.lightbulb_outline), findsNothing);
     expect(find.byIcon(Icons.lightbulb), findsNothing);
 
     final surfaceSize = tester.getSize(
-      find.byKey(const ValueKey('pip_timer_box_surface')),
+      find.byKey(const ValueKey('pip_timer_ring_surface')),
     );
     expect(surfaceSize.width, closeTo(surfaceSize.height, 0.1));
   });
