@@ -28,16 +28,34 @@ migrate_working_dir/
 **/ios/Flutter/.last_build_id
 .dart_tool/
 .flutter-plugins-dependencies
+.flutter-plugins
 .pub-cache/
 .pub/
 /build/
 /coverage/
+.packages
 
 # Symbolication related
 app.*.symbols
 
 # Obfuscation related
 app.*.map.json
+
+# Release artifacts
+*.apk
+*.aab
+*.ipa
+*.dSYM.zip
+*.dSYM/
+
+# Local secrets and signing material
+.env
+.env.*
+!.env.example
+local.properties
+key.properties
+*.keystore
+*.jks
 
 # Android Studio will place build artifacts here
 /android/app/debug

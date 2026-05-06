@@ -90,7 +90,7 @@ void main() {
     expect(find.text('计时设置'), findsOneWidget);
     expect(find.text('外观'), findsOneWidget);
     expect(find.text('切换提醒'), findsOneWidget);
-    expect(find.text('WebDAV 同步'), findsOneWidget);
+    expect(find.text('WebDAV 同步'), findsNothing);
 
     await tester.tap(find.text('外观'));
     await tester.pumpAndSettle();
@@ -111,6 +111,15 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('切换震动'), findsOneWidget);
     expect(find.text('切换音效'), findsOneWidget);
+
+    Navigator.of(tester.element(find.text('切换提醒').last)).pop();
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('备份'));
+    await tester.pumpAndSettle();
+    expect(find.text('立即同步'), findsOneWidget);
+    expect(find.text('自动同步'), findsOneWidget);
+    expect(find.text('WebDAV'), findsOneWidget);
 
     controller.dispose();
   });

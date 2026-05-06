@@ -189,9 +189,11 @@ class _TomatoHomePageState extends State<TomatoHomePage>
     with WidgetsBindingObserver {
   AppController? _controller;
   Timer? _idleChromeTimer;
+  Timer? _pipChromeRestoreTimer;
   int _selectedIndex = 0;
   bool _chromeHidden = false;
   bool _inPictureInPicture = false;
+  bool _pipTransitioning = false;
   bool _ignoreNextQuietTap = false;
 
   @override
@@ -223,6 +225,7 @@ class _TomatoHomePageState extends State<TomatoHomePage>
     WidgetsBinding.instance.removeObserver(this);
     _controller?.removeListener(_handleControllerChanged);
     _idleChromeTimer?.cancel();
+    _pipChromeRestoreTimer?.cancel();
     unawaited(PlatformControls.setKeepScreenOn(false));
     unawaited(
       PlatformControls.setPipState(
@@ -240,10 +243,13 @@ class _TomatoHomePageState extends State<TomatoHomePage>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.paused) {
+      unawaited(_controller?.syncBeforeBackground() ?? Future<void>.value());
       _prepareForPictureInPicture();
-    } else if (state == AppLifecycleState.resumed && _inPictureInPicture) {
+    } else if (state == AppLifecycleState.resumed &&
+        (_inPictureInPicture || _pipTransitioning)) {
       setState(() {
         _inPictureInPicture = false;
+        _pipTransitioning = false;
         _chromeHidden = false;
       });
       _syncIdleChrome(restart: true);
@@ -276,8 +282,9 @@ class _TomatoHomePageState extends State<TomatoHomePage>
     final controller = AppScope.watch(context);
     final data = controller.data;
     final timer = data.timer;
+    final pipPreview = _inPictureInPicture || _pipTransitioning;
     final hideChrome =
-        (_chromeHidden || _inPictureInPicture) &&
+        (_chromeHidden || pipPreview) &&
         _selectedIndex == 0 &&
         timer.phase == TimerPhase.running;
     _syncSystemUi(context, timer.mode, immersive: hideChrome);
@@ -299,7 +306,7 @@ class _TomatoHomePageState extends State<TomatoHomePage>
               : Stack(
                   children: [
                     Positioned.fill(
-                      child: _inPictureInPicture
+                      child: pipPreview
                           ? _pageTransition(
                               controller: controller,
                               data: data,
@@ -316,7 +323,7 @@ class _TomatoHomePageState extends State<TomatoHomePage>
                               ),
                             ),
                     ),
-                    if (!_inPictureInPicture)
+                    if (!pipPreview)
                       _FloatingDock(
                         hidden: hideChrome,
                         selectedIndex: _selectedIndex,
@@ -336,7 +343,7 @@ class _TomatoHomePageState extends State<TomatoHomePage>
     required bool inPictureInPicture,
   }) {
     return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 260),
+      duration: const Duration(milliseconds: 180),
       switchInCurve: Curves.easeOutCubic,
       switchOutCurve: Curves.easeInCubic,
       transitionBuilder: (child, animation) {
@@ -380,7 +387,9 @@ class _TomatoHomePageState extends State<TomatoHomePage>
       case 1:
         return _StatsPage(data: data);
       case 2:
-        return _SettingsPage(controller: controller, settings: data.settings);
+        return _SettingsPage(settings: data.settings);
+      case 3:
+        return _BackupPage(controller: controller, settings: data.settings);
       default:
         return _TimerPage(
           controller: controller,
@@ -394,6 +403,9 @@ class _TomatoHomePageState extends State<TomatoHomePage>
   }
 
   void _selectPage(int index) {
+    if (_selectedIndex == index) {
+      return;
+    }
     setState(() {
       _selectedIndex = index;
       _chromeHidden = false;
@@ -434,17 +446,19 @@ class _TomatoHomePageState extends State<TomatoHomePage>
     }
     _idleChromeTimer?.cancel();
     _idleChromeTimer = null;
-    if (_selectedIndex == 0 && _chromeHidden) {
+    _pipChromeRestoreTimer?.cancel();
+    if (_selectedIndex == 0 && _chromeHidden && _pipTransitioning) {
       return;
     }
     setState(() {
       _selectedIndex = 0;
       _chromeHidden = true;
+      _pipTransitioning = true;
     });
   }
 
   void _handleUserActivity() {
-    if (_inPictureInPicture) {
+    if (_inPictureInPicture || _pipTransitioning) {
       return;
     }
     if (_chromeHidden) {
@@ -532,14 +546,33 @@ class _TomatoHomePageState extends State<TomatoHomePage>
     }
     setState(() {
       _inPictureInPicture = enabled;
+      _pipTransitioning = false;
       if (enabled) {
         _selectedIndex = 0;
         _chromeHidden = true;
       } else {
-        _chromeHidden = false;
+        _chromeHidden = true;
       }
     });
+    if (!enabled) {
+      _restoreChromeAfterPictureInPicture();
+    }
     _syncIdleChrome(restart: true);
+  }
+
+  void _restoreChromeAfterPictureInPicture() {
+    _pipChromeRestoreTimer?.cancel();
+    _pipChromeRestoreTimer = Timer(const Duration(milliseconds: 360), () {
+      if (!mounted || _selectedIndex != 0 || _controller == null) {
+        return;
+      }
+      if (_controller!.data.timer.phase == TimerPhase.running) {
+        setState(() {
+          _chromeHidden = false;
+        });
+      }
+      _syncIdleChrome(restart: true);
+    });
   }
 
   void _handlePlatformKeepScreenOnChanged(bool enabled) {
@@ -593,10 +626,12 @@ class _TimerPage extends StatelessWidget {
           -42.0,
           -26.0,
         );
-        final maxRingDimension = math.min(
-          318.0,
-          math.max(216.0, constraints.maxHeight - quoteTop - bottomReserve),
-        );
+        final maxRingDimension =
+            math.min(
+              318.0,
+              math.max(216.0, constraints.maxHeight - quoteTop - bottomReserve),
+            ) *
+            0.9;
 
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
@@ -687,7 +722,7 @@ class _FloatingDock extends StatelessWidget {
         slideOffset: const Offset(0, 0.18),
         child: Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 420),
+            constraints: const BoxConstraints(maxWidth: 460),
             child: Material(
               elevation: 10,
               shadowColor: Colors.black.withAlpha(36),
@@ -712,6 +747,13 @@ class _FloatingDock extends StatelessWidget {
                         label: '统计',
                         selected: selectedIndex == 1,
                         onTap: () => onSelected(1),
+                      ),
+                      _DockItem(
+                        icon: Icons.cloud_sync_outlined,
+                        selectedIcon: Icons.cloud_done,
+                        label: '备份',
+                        selected: selectedIndex == 3,
+                        onTap: () => onSelected(3),
                       ),
                       _DockItem(
                         icon: Icons.settings_outlined,
@@ -756,10 +798,13 @@ class _DockItem extends StatelessWidget {
         child: SizedBox(
           height: 44,
           child: InkWell(
-            onTap: onTap,
+            onTap: selected ? null : onTap,
             borderRadius: BorderRadius.circular(999),
+            splashFactory: NoSplash.splashFactory,
+            highlightColor: Colors.transparent,
+            splashColor: Colors.transparent,
             child: AnimatedContainer(
-              duration: const Duration(milliseconds: 220),
+              duration: const Duration(milliseconds: 140),
               curve: Curves.easeOutCubic,
               alignment: Alignment.center,
               padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -902,9 +947,8 @@ class _StatsPage extends StatelessWidget {
 }
 
 class _SettingsPage extends StatelessWidget {
-  const _SettingsPage({required this.controller, required this.settings});
+  const _SettingsPage({required this.settings});
 
-  final AppController controller;
   final AppSettings settings;
 
   @override
@@ -945,23 +989,6 @@ class _SettingsPage extends StatelessWidget {
                     trailing: const Icon(Icons.chevron_right),
                     onTap: () => _openFeedbackSettings(context),
                   ),
-                  const Divider(height: 1, indent: 56),
-                  ListTile(
-                    leading: const Icon(Icons.cloud_sync_outlined),
-                    title: const Text('WebDAV 同步'),
-                    subtitle: Text(
-                      settings.webDav.isConfigured ? '已配置远端备份' : '未配置',
-                    ),
-                    trailing: controller.syncing
-                        ? const SizedBox.square(
-                            dimension: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.chevron_right),
-                    onTap: controller.syncing
-                        ? null
-                        : () => _openWebDavSettings(context),
-                  ),
                 ],
               ),
             ),
@@ -993,6 +1020,154 @@ class _SettingsPage extends StatelessWidget {
       context: context,
       showDragHandle: true,
       builder: (_) => const _AppearanceSettingsSheet(),
+    );
+  }
+}
+
+class _BackupPage extends StatelessWidget {
+  const _BackupPage({required this.controller, required this.settings});
+
+  final AppController controller;
+  final AppSettings settings;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final lastSyncAt = controller.lastSyncAt;
+    final status = controller.syncing
+        ? '正在同步'
+        : controller.lastSyncError ?? _lastSyncLabel(lastSyncAt);
+
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 720),
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 24, 20, 112),
+          children: [
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(18),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.cloud_done_outlined, color: scheme.primary),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            '备份',
+                            style: Theme.of(context).textTheme.titleLarge,
+                          ),
+                        ),
+                        if (controller.syncing)
+                          const SizedBox.square(
+                            dimension: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      status,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: controller.lastSyncError == null
+                            ? scheme.onSurfaceVariant
+                            : scheme.error,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: [
+                        FilledButton.icon(
+                          onPressed:
+                              settings.webDav.isConfigured &&
+                                  !controller.syncing
+                              ? controller.syncNow
+                              : null,
+                          icon: const Icon(Icons.sync),
+                          label: const Text('立即同步'),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: controller.syncing
+                              ? null
+                              : () => _openWebDavSettings(context),
+                          icon: const Icon(Icons.settings_backup_restore),
+                          label: const Text('WebDAV 设置'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Card(
+              child: Column(
+                children: [
+                  SwitchListTile(
+                    secondary: const Icon(Icons.autorenew),
+                    title: const Text('自动同步'),
+                    subtitle: Text(
+                      settings.webDav.isConfigured
+                          ? '应用存活或画中画运行时每 ${settings.backupAutoSyncIntervalMinutes} 分钟同步一次'
+                          : '配置 WebDAV 后启用',
+                    ),
+                    value: settings.backupAutoSyncEnabled,
+                    onChanged: (value) {
+                      controller.updateSettings(
+                        settings.copyWith(backupAutoSyncEnabled: value),
+                      );
+                    },
+                  ),
+                  const Divider(height: 1, indent: 56),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    child: NumberStepper(
+                      icon: Icons.schedule,
+                      label: '同步间隔',
+                      value: settings.backupAutoSyncIntervalMinutes,
+                      min: 5,
+                      max: 1440,
+                      suffix: '分钟',
+                      onChanged: (value) {
+                        controller.updateSettings(
+                          settings.copyWith(
+                            backupAutoSyncIntervalMinutes: value,
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            Card(
+              child: ListTile(
+                leading: Icon(
+                  settings.webDav.isConfigured
+                      ? Icons.cloud_done_outlined
+                      : Icons.cloud_off_outlined,
+                ),
+                title: const Text('WebDAV'),
+                subtitle: Text(
+                  settings.webDav.isConfigured
+                      ? settings.webDav.remotePath
+                      : '未配置远端备份',
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => _openWebDavSettings(context),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -1984,7 +2159,7 @@ class _WebDavSettingsSheetState extends State<_WebDavSettingsSheet> {
         padding: EdgeInsets.fromLTRB(20, 0, 20, 20 + bottom),
         shrinkWrap: true,
         children: [
-          Text('WebDAV 同步', style: Theme.of(context).textTheme.titleLarge),
+          Text('WebDAV 备份', style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 12),
           TextField(
             controller: _endpointController,
@@ -2031,7 +2206,7 @@ class _WebDavSettingsSheetState extends State<_WebDavSettingsSheet> {
               FilledButton.icon(
                 onPressed: _saveWebDav,
                 icon: const Icon(Icons.save_outlined),
-                label: const Text('保存'),
+                label: const Text('保存备份设置'),
               ),
               OutlinedButton.icon(
                 onPressed: settings.webDav.isConfigured && !controller.syncing
@@ -2151,6 +2326,13 @@ String formatDateTime(DateTime value) {
       '${local.day.toString().padLeft(2, '0')} '
       '${local.hour.toString().padLeft(2, '0')}:'
       '${local.minute.toString().padLeft(2, '0')}';
+}
+
+String _lastSyncLabel(DateTime? value) {
+  if (value == null) {
+    return '尚未同步';
+  }
+  return '上次同步 ${formatDateTime(value)}';
 }
 
 String _phaseLabel(TimerPhase phase) {

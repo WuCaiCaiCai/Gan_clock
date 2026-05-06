@@ -27,6 +27,10 @@ class AppController extends ChangeNotifier {
 
   TomatoData _data = TomatoData.initial();
   Timer? _ticker;
+  Timer? _autoSyncTimer;
+  DateTime? _lastAutoSyncAttemptAt;
+  DateTime? _lastSyncAt;
+  String? _lastSyncError;
   bool _loading = true;
   bool _syncing = false;
   bool _disposed = false;
@@ -37,6 +41,10 @@ class AppController extends ChangeNotifier {
   bool get loading => _loading;
 
   bool get syncing => _syncing;
+
+  DateTime? get lastSyncAt => _lastSyncAt;
+
+  String? get lastSyncError => _lastSyncError;
 
   String? takeMessage() {
     final current = _message;
@@ -61,6 +69,7 @@ class AppController extends ChangeNotifier {
     } finally {
       _loading = false;
       _restartTicker();
+      _restartAutoSyncTimer();
       _notify();
     }
   }
@@ -100,28 +109,73 @@ class AppController extends ChangeNotifier {
     await updateSettings(_data.settings.copyWith(webDav: settings));
     _message = 'WebDAV 设置已保存';
     _notify();
+    unawaited(_autoSyncIfDue(force: true));
   }
 
   Future<void> syncNow() async {
+    await _syncNow(silent: false, force: true);
+  }
+
+  Future<void> syncBeforeBackground() async {
+    if (!_data.settings.backupAutoSyncEnabled) {
+      return;
+    }
+    await _syncNow(silent: true, force: true);
+  }
+
+  Future<void> _syncNow({required bool silent, required bool force}) async {
     if (!_data.settings.webDav.isConfigured || _syncing) {
       return;
     }
+    if (!force && !_data.settings.backupAutoSyncEnabled) {
+      return;
+    }
+    final attemptedAt = DateTime.now();
+    _lastAutoSyncAttemptAt = attemptedAt;
     _syncing = true;
+    _lastSyncError = null;
     _notify();
     try {
       final merged = await _webDavService.sync(_data.settings.webDav, _data);
       _data = merged;
       await _storage.save(_data);
-      _message = 'WebDAV 同步完成';
+      _lastSyncAt = attemptedAt;
+      _lastSyncError = null;
+      if (!silent) {
+        _message = 'WebDAV 同步完成';
+      }
     } on WebDavException catch (error) {
-      _message = error.message;
+      _lastSyncError = error.message;
+      if (!silent) {
+        _message = error.message;
+      }
     } on Object {
-      _message = 'WebDAV 同步失败';
+      _lastSyncError = 'WebDAV 同步失败';
+      if (!silent) {
+        _message = 'WebDAV 同步失败';
+      }
     } finally {
       _syncing = false;
       _restartTicker();
+      _restartAutoSyncTimer();
       _notify();
     }
+  }
+
+  Future<void> _autoSyncIfDue({bool force = false}) async {
+    final settings = _data.settings;
+    if (!settings.backupAutoSyncEnabled || !settings.webDav.isConfigured) {
+      return;
+    }
+    final now = DateTime.now();
+    final interval = Duration(minutes: settings.backupAutoSyncIntervalMinutes);
+    final lastAttempt = _lastAutoSyncAttemptAt;
+    if (!force &&
+        lastAttempt != null &&
+        now.difference(lastAttempt) < interval) {
+      return;
+    }
+    await _syncNow(silent: true, force: false);
   }
 
   void _tick() {
@@ -142,6 +196,7 @@ class AppController extends ChangeNotifier {
     }
     _data = next;
     _restartTicker();
+    _restartAutoSyncTimer();
     _notify();
     await _storage.save(_data);
   }
@@ -152,6 +207,19 @@ class AppController extends ChangeNotifier {
     if (_data.timer.phase == TimerPhase.running) {
       _ticker = Timer.periodic(const Duration(seconds: 1), (_) => _tick());
     }
+  }
+
+  void _restartAutoSyncTimer() {
+    _autoSyncTimer?.cancel();
+    _autoSyncTimer = null;
+    final settings = _data.settings;
+    if (!settings.backupAutoSyncEnabled || !settings.webDav.isConfigured) {
+      return;
+    }
+    _autoSyncTimer = Timer.periodic(
+      Duration(minutes: settings.backupAutoSyncIntervalMinutes),
+      (_) => unawaited(_autoSyncIfDue(force: true)),
+    );
   }
 
   void _setCompletionMessage(TimerMode? mode) {
@@ -181,6 +249,7 @@ class AppController extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     _ticker?.cancel();
+    _autoSyncTimer?.cancel();
     super.dispose();
   }
 }

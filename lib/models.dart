@@ -140,6 +140,8 @@ class AppSettings {
     this.keepScreenOnEnabled = false,
     this.completionSoundEnabled = false,
     this.completionHapticsEnabled = true,
+    this.backupAutoSyncEnabled = true,
+    this.backupAutoSyncIntervalMinutes = 30,
     this.webDav = const WebDavSettings(),
   });
 
@@ -152,6 +154,8 @@ class AppSettings {
   final bool keepScreenOnEnabled;
   final bool completionSoundEnabled;
   final bool completionHapticsEnabled;
+  final bool backupAutoSyncEnabled;
+  final int backupAutoSyncIntervalMinutes;
   final WebDavSettings webDav;
 
   AppSettings copyWith({
@@ -164,6 +168,8 @@ class AppSettings {
     bool? keepScreenOnEnabled,
     bool? completionSoundEnabled,
     bool? completionHapticsEnabled,
+    bool? backupAutoSyncEnabled,
+    int? backupAutoSyncIntervalMinutes,
     WebDavSettings? webDav,
   }) {
     return AppSettings(
@@ -179,6 +185,10 @@ class AppSettings {
           completionSoundEnabled ?? this.completionSoundEnabled,
       completionHapticsEnabled:
           completionHapticsEnabled ?? this.completionHapticsEnabled,
+      backupAutoSyncEnabled:
+          backupAutoSyncEnabled ?? this.backupAutoSyncEnabled,
+      backupAutoSyncIntervalMinutes:
+          backupAutoSyncIntervalMinutes ?? this.backupAutoSyncIntervalMinutes,
       webDav: webDav ?? this.webDav,
     );
   }
@@ -194,6 +204,8 @@ class AppSettings {
       'keepScreenOnEnabled': keepScreenOnEnabled,
       'completionSoundEnabled': completionSoundEnabled,
       'completionHapticsEnabled': completionHapticsEnabled,
+      'backupAutoSyncEnabled': backupAutoSyncEnabled,
+      'backupAutoSyncIntervalMinutes': backupAutoSyncIntervalMinutes,
       'webDav': webDav.toJson(),
     };
   }
@@ -221,6 +233,13 @@ class AppSettings {
       completionSoundEnabled: value['completionSoundEnabled'] as bool? ?? false,
       completionHapticsEnabled:
           value['completionHapticsEnabled'] as bool? ?? true,
+      backupAutoSyncEnabled: value['backupAutoSyncEnabled'] as bool? ?? true,
+      backupAutoSyncIntervalMinutes: _boundedInt(
+        value['backupAutoSyncIntervalMinutes'],
+        5,
+        1440,
+        30,
+      ),
       webDav: WebDavSettings.fromJson(value['webDav']),
     );
   }

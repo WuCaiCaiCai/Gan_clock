@@ -13,11 +13,15 @@ void main() {
     expect(settings.idleFocusSeconds, 30);
     expect(settings.themeMode, AppThemeMode.system);
     expect(settings.keepScreenOnEnabled, isFalse);
+    expect(settings.backupAutoSyncEnabled, isTrue);
+    expect(settings.backupAutoSyncIntervalMinutes, 30);
     expect(AppSettings.fromJson(const {}).completionSoundEnabled, isFalse);
     expect(AppSettings.fromJson(const {}).completionHapticsEnabled, isTrue);
     expect(AppSettings.fromJson(const {}).idleFocusSeconds, 30);
     expect(AppSettings.fromJson(const {}).themeMode, AppThemeMode.system);
     expect(AppSettings.fromJson(const {}).keepScreenOnEnabled, isFalse);
+    expect(AppSettings.fromJson(const {}).backupAutoSyncEnabled, isTrue);
+    expect(AppSettings.fromJson(const {}).backupAutoSyncIntervalMinutes, 30);
     expect(
       AppSettings.fromJson(const {'darkModeEnabled': true}).themeMode,
       AppThemeMode.dark,
@@ -153,6 +157,7 @@ void main() {
       );
 
       expect(stopped.timer.phase, TimerPhase.idle);
+      expect(stopped.timer.mode, TimerMode.focus);
       expect(stopped.timer.remainingSeconds, 1500);
       expect(stopped.timer.startedAt, isNull);
       expect(stopped.timer.endsAt, isNull);
@@ -174,6 +179,24 @@ void main() {
 
     expect(stopped.sessions, isEmpty);
     expect(stopped.totalFocusSeconds, 0);
+  });
+
+  test('stop during break resets to a new focus round', () {
+    final start = DateTime(2026, 1, 1, 9);
+    final breakReady = TomatoData.initial().copyWith(
+      timer: engine.snapshotForMode(TimerMode.longBreak, const AppSettings()),
+    );
+    final runningBreak = engine.start(breakReady, at: start);
+
+    final stopped = engine.stop(
+      runningBreak,
+      at: start.add(const Duration(minutes: 2)),
+    );
+
+    expect(stopped.timer.mode, TimerMode.focus);
+    expect(stopped.timer.phase, TimerPhase.idle);
+    expect(stopped.timer.remainingSeconds, 1500);
+    expect(stopped.sessions, isEmpty);
   });
 
   test('completed focus shorter than one minute is not recorded', () {
@@ -236,6 +259,8 @@ void main() {
       keepScreenOnEnabled: true,
       completionSoundEnabled: false,
       completionHapticsEnabled: false,
+      backupAutoSyncEnabled: false,
+      backupAutoSyncIntervalMinutes: 45,
     );
 
     final decoded = AppSettings.fromJson(settings.toJson());
@@ -245,5 +270,7 @@ void main() {
     expect(decoded.keepScreenOnEnabled, isTrue);
     expect(decoded.completionSoundEnabled, isFalse);
     expect(decoded.completionHapticsEnabled, isFalse);
+    expect(decoded.backupAutoSyncEnabled, isFalse);
+    expect(decoded.backupAutoSyncIntervalMinutes, 45);
   });
 }

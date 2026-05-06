@@ -89,14 +89,14 @@ class TomatoTimerEngine {
     final current = ticked.timer;
     if (current.phase == TimerPhase.idle) {
       return ticked.copyWith(
-        timer: snapshotForMode(current.mode, ticked.settings),
+        timer: snapshotForMode(TimerMode.focus, ticked.settings),
         updatedAt: now,
       );
     }
 
     final stopped = _recordStoppedFocus(ticked, current, now);
     return stopped.copyWith(
-      timer: snapshotForMode(current.mode, stopped.settings),
+      timer: snapshotForMode(TimerMode.focus, stopped.settings),
       updatedAt: now,
     );
   }
