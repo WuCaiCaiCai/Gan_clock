@@ -73,6 +73,13 @@ class _TomatoAppState extends State<TomatoApp> {
 }
 
 const _shelfSeedColor = Color(0xFF7B5A44);
+const _wenKaiFontFamily = 'LXGW WenKai';
+const _wenKaiFontFallback = <String>[
+  '霞鹜文楷',
+  '霞骛文楷',
+  'LXGW WenKai Screen',
+  'serif',
+];
 
 ThemeData _buildAppTheme(Brightness brightness) {
   final scheme = ColorScheme.fromSeed(
@@ -540,7 +547,7 @@ class _TimerPage extends StatelessWidget {
           Center(child: TimerProgressRing(snapshot: timer)),
           Center(
             child: Transform.translate(
-              offset: const Offset(0, 150),
+              offset: const Offset(0, -204),
               child: _ChromeFade(
                 hidden: quiet,
                 child: _HitokotoLine(mode: timer.mode),
@@ -875,7 +882,8 @@ class _HitokotoLine extends StatelessWidget {
     final day = DateTime(now.year, now.month, now.day);
     final dayIndex = day.difference(DateTime(now.year)).inDays;
     final message = messages[(dayIndex + mode.index * 2) % messages.length];
-    final color = Theme.of(context).colorScheme.onSurfaceVariant;
+    final theme = Theme.of(context);
+    final color = theme.colorScheme.onSurfaceVariant;
 
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 220),
@@ -887,7 +895,14 @@ class _HitokotoLine extends StatelessWidget {
         textAlign: TextAlign.center,
         maxLines: 2,
         overflow: TextOverflow.ellipsis,
-        style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: color),
+        style: theme.textTheme.titleMedium?.copyWith(
+          color: color,
+          fontFamily: _wenKaiFontFamily,
+          fontFamilyFallback: _wenKaiFontFallback,
+          fontWeight: FontWeight.w500,
+          height: 1.45,
+          letterSpacing: 0,
+        ),
       ),
     );
   }
