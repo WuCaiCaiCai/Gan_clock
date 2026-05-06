@@ -72,9 +72,11 @@ class _TomatoAppState extends State<TomatoApp> {
   }
 }
 
+const _shelfSeedColor = Color(0xFF7B5A44);
+
 ThemeData _buildAppTheme(Brightness brightness) {
   final scheme = ColorScheme.fromSeed(
-    seedColor: const Color(0xFFD1493F),
+    seedColor: _shelfSeedColor,
     brightness: brightness,
   );
   final dark = brightness == Brightness.dark;
@@ -82,17 +84,17 @@ ThemeData _buildAppTheme(Brightness brightness) {
     useMaterial3: true,
     colorScheme: scheme,
     scaffoldBackgroundColor: dark
-        ? const Color(0xFF12110F)
-        : const Color(0xFFF8F5F1),
+        ? const Color(0xFF15120F)
+        : const Color(0xFFF6F0E8),
     cardTheme: CardThemeData(
       elevation: 0,
-      color: dark ? const Color(0xFF1C1A18) : Colors.white,
+      color: dark ? const Color(0xFF211D18) : const Color(0xFFFFFBF6),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.all(Radius.circular(8)),
       ),
     ),
     bottomSheetTheme: BottomSheetThemeData(
-      backgroundColor: dark ? const Color(0xFF1C1A18) : Colors.white,
+      backgroundColor: dark ? const Color(0xFF211D18) : const Color(0xFFFFFBF6),
     ),
   );
 }
@@ -180,6 +182,7 @@ class _TomatoHomePageState extends State<TomatoHomePage>
     if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.paused) {
       _requestQuiet();
+      unawaited(PlatformControls.enterPictureInPicture());
     }
   }
 
@@ -222,7 +225,7 @@ class _TomatoHomePageState extends State<TomatoHomePage>
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 520),
         curve: Curves.easeOutCubic,
-        color: _modeBackgroundColor(context, timer.mode),
+        color: _modePalette(timer.mode).backgroundFor(context),
         child: Scaffold(
           backgroundColor: Colors.transparent,
           extendBody: true,
@@ -433,15 +436,11 @@ class _TimerPage extends StatelessWidget {
       onTap: onRequestQuiet,
       child: Stack(
         children: [
-          Center(
-            child: TimerProgressRing(
-              snapshot: timer,
-              color: _modeColor(timer.mode),
-            ),
-          ),
+          Positioned.fill(child: _TimerProgressBackdrop(snapshot: timer)),
+          Center(child: TimerNumberDisplay(snapshot: timer)),
           Center(
             child: Transform.translate(
-              offset: const Offset(0, 178),
+              offset: const Offset(0, 150),
               child: _ChromeFade(
                 hidden: quiet,
                 child: _HitokotoLine(mode: timer.mode),
@@ -585,6 +584,7 @@ class _PhasePill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final palette = _modePalette(mode);
     return AnimatedContainer(
       duration: const Duration(milliseconds: 260),
       curve: Curves.easeOutCubic,
@@ -592,12 +592,12 @@ class _PhasePill extends StatelessWidget {
       decoration: BoxDecoration(
         color: scheme.surface.withAlpha(220),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: _modeColor(mode).withAlpha(90)),
+        border: Border.all(color: palette.accent.withAlpha(90)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(_modeIcon(mode), size: 18, color: _modeColor(mode)),
+          Icon(_modeIcon(mode), size: 18, color: palette.accent),
           const SizedBox(width: 8),
           Text('${mode.label} · ${_phaseLabel(phase)}'),
         ],
@@ -792,25 +792,19 @@ class _HitokotoLine extends StatelessWidget {
   }
 }
 
-class TimerProgressRing extends StatefulWidget {
-  const TimerProgressRing({
-    required this.snapshot,
-    required this.color,
-    super.key,
-  });
+class TimerNumberDisplay extends StatefulWidget {
+  const TimerNumberDisplay({required this.snapshot, super.key});
 
   final TimerSnapshot snapshot;
-  final Color color;
 
   @override
-  State<TimerProgressRing> createState() => _TimerProgressRingState();
+  State<TimerNumberDisplay> createState() => _TimerNumberDisplayState();
 }
 
-class _TimerProgressRingState extends State<TimerProgressRing>
+class _TimerNumberDisplayState extends State<TimerNumberDisplay>
     with SingleTickerProviderStateMixin {
   late final AnimationController _startPulseController;
   late final Animation<double> _scaleAnimation;
-  late final Animation<double> _haloAnimation;
 
   @override
   void initState() {
@@ -835,26 +829,10 @@ class _TimerProgressRingState extends State<TimerProgressRing>
         weight: 58,
       ),
     ]).animate(_startPulseController);
-    _haloAnimation = TweenSequence<double>([
-      TweenSequenceItem(
-        tween: Tween<double>(
-          begin: 0,
-          end: 1,
-        ).chain(CurveTween(curve: Curves.easeOutCubic)),
-        weight: 28,
-      ),
-      TweenSequenceItem(
-        tween: Tween<double>(
-          begin: 1,
-          end: 0,
-        ).chain(CurveTween(curve: Curves.easeInCubic)),
-        weight: 72,
-      ),
-    ]).animate(_startPulseController);
   }
 
   @override
-  void didUpdateWidget(covariant TimerProgressRing oldWidget) {
+  void didUpdateWidget(covariant TimerNumberDisplay oldWidget) {
     super.didUpdateWidget(oldWidget);
     final started =
         oldWidget.snapshot.phase != TimerPhase.running &&
@@ -872,12 +850,17 @@ class _TimerProgressRingState extends State<TimerProgressRing>
 
   @override
   Widget build(BuildContext context) {
-    final total = math.max(1, widget.snapshot.totalSeconds);
-    final elapsed = (total - widget.snapshot.remainingSeconds).clamp(0, total);
-    final progress = elapsed / total;
     final theme = Theme.of(context);
     final textTheme = theme.textTheme;
-    final scheme = theme.colorScheme;
+    final palette = _modePalette(widget.snapshot.mode);
+    final timerStyle = textTheme.displayLarge?.copyWith(
+      fontSize: 86,
+      height: 0.92,
+      letterSpacing: 0,
+      fontWeight: FontWeight.w800,
+      color: palette.accent,
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
 
     return Center(
       child: AnimatedBuilder(
@@ -885,135 +868,67 @@ class _TimerProgressRingState extends State<TimerProgressRing>
         builder: (context, child) {
           return Transform.scale(scale: _scaleAnimation.value, child: child);
         },
-        child: TweenAnimationBuilder<double>(
-          tween: Tween<double>(end: progress),
-          duration: widget.snapshot.phase == TimerPhase.running
-              ? const Duration(milliseconds: 680)
-              : const Duration(milliseconds: 320),
-          curve: Curves.easeOutCubic,
-          builder: (context, animatedProgress, child) {
-            return AnimatedBuilder(
-              animation: _startPulseController,
-              builder: (context, _) {
-                return SizedBox.square(
-                  dimension: 284,
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      CustomPaint(
-                        painter: _RingPainter(
-                          progress: animatedProgress,
-                          color: widget.color,
-                          trackColor: scheme.surfaceContainerHighest,
-                          haloOpacity: _haloAnimation.value,
-                        ),
-                      ),
-                      Center(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            AnimatedSwitcher(
-                              duration: const Duration(milliseconds: 220),
-                              switchInCurve: Curves.easeOutCubic,
-                              switchOutCurve: Curves.easeInCubic,
-                              child: Icon(
-                                _modeIcon(widget.snapshot.mode),
-                                key: ValueKey(widget.snapshot.mode),
-                                color: widget.color,
-                                size: 34,
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            Text(
-                              formatClock(widget.snapshot.remainingSeconds),
-                              style: textTheme.displayMedium?.copyWith(
-                                fontWeight: FontWeight.w700,
-                                color: scheme.onSurface,
-                                fontFeatures: const [
-                                  FontFeature.tabularFigures(),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            AnimatedSwitcher(
-                              duration: const Duration(milliseconds: 180),
-                              child: Text(
-                                _phaseLabel(widget.snapshot.phase),
-                                key: ValueKey(widget.snapshot.phase),
-                                style: textTheme.titleMedium?.copyWith(
-                                  color: scheme.onSurfaceVariant,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            );
-          },
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 440),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: AnimatedDefaultTextStyle(
+                duration: const Duration(milliseconds: 260),
+                curve: Curves.easeOutCubic,
+                style: timerStyle ?? const TextStyle(fontSize: 86),
+                child: Text(
+                  formatClock(widget.snapshot.remainingSeconds),
+                  textAlign: TextAlign.center,
+                  softWrap: false,
+                ),
+              ),
+            ),
+          ),
         ),
       ),
     );
   }
 }
 
-class _RingPainter extends CustomPainter {
-  const _RingPainter({
-    required this.progress,
-    required this.color,
-    required this.trackColor,
-    required this.haloOpacity,
-  });
+class _TimerProgressBackdrop extends StatelessWidget {
+  const _TimerProgressBackdrop({required this.snapshot});
 
-  final double progress;
-  final Color color;
-  final Color trackColor;
-  final double haloOpacity;
+  final TimerSnapshot snapshot;
 
   @override
-  void paint(Canvas canvas, Size size) {
-    final stroke = 18.0;
-    final rect =
-        Offset(stroke / 2, stroke / 2) &
-        Size(size.width - stroke, size.height - stroke);
-    final background = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = stroke
-      ..strokeCap = StrokeCap.round
-      ..color = trackColor;
-    final foreground = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = stroke
-      ..strokeCap = StrokeCap.round
-      ..color = color;
-    final halo = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 28
-      ..strokeCap = StrokeCap.round
-      ..color = color.withAlpha((haloOpacity * 34).round());
+  Widget build(BuildContext context) {
+    final total = math.max(1, snapshot.totalSeconds);
+    final elapsed = (total - snapshot.remainingSeconds).clamp(0, total);
+    final progress = elapsed / total;
+    final palette = _modePalette(snapshot.mode);
 
-    canvas.drawArc(rect, 0, math.pi * 2, false, background);
-    if (haloOpacity > 0) {
-      canvas.drawArc(rect, 0, math.pi * 2, false, halo);
-    }
-    canvas.drawArc(
-      rect,
-      -math.pi / 2,
-      math.pi * 2 * progress,
-      false,
-      foreground,
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(end: progress),
+      duration: snapshot.phase == TimerPhase.running
+          ? const Duration(milliseconds: 680)
+          : const Duration(milliseconds: 320),
+      curve: Curves.easeOutCubic,
+      builder: (context, value, child) {
+        return Align(
+          alignment: Alignment.bottomCenter,
+          child: FractionallySizedBox(
+            heightFactor: value.clamp(0.0, 1.0),
+            widthFactor: 1,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: palette.accent.withAlpha(
+                  Theme.of(context).colorScheme.brightness == Brightness.dark
+                      ? 44
+                      : 32,
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
-  }
-
-  @override
-  bool shouldRepaint(covariant _RingPainter oldDelegate) {
-    return oldDelegate.progress != progress ||
-        oldDelegate.color != color ||
-        oldDelegate.trackColor != trackColor ||
-        oldDelegate.haloOpacity != haloOpacity;
   }
 }
 
@@ -1666,25 +1581,45 @@ IconData _modeIcon(TimerMode mode) {
   }
 }
 
-Color _modeColor(TimerMode mode) {
-  switch (mode) {
-    case TimerMode.focus:
-      return const Color(0xFFD1493F);
-    case TimerMode.shortBreak:
-      return const Color(0xFF2F855A);
-    case TimerMode.longBreak:
-      return const Color(0xFF3B6E8F);
+class _StagePalette {
+  const _StagePalette({
+    required this.accent,
+    required this.lightBackground,
+    required this.darkBackground,
+  });
+
+  final Color accent;
+  final Color lightBackground;
+  final Color darkBackground;
+
+  Color backgroundFor(BuildContext context) {
+    return Theme.of(context).colorScheme.brightness == Brightness.dark
+        ? darkBackground
+        : lightBackground;
   }
 }
 
-Color _modeBackgroundColor(BuildContext context, TimerMode mode) {
-  final scheme = Theme.of(context).colorScheme;
-  final accent = _modeColor(mode);
-  final base = scheme.brightness == Brightness.dark
-      ? scheme.surface
-      : scheme.surfaceContainerLowest;
-  final amount = scheme.brightness == Brightness.dark ? 0.22 : 0.12;
-  return Color.lerp(base, accent, amount)!;
+_StagePalette _modePalette(TimerMode mode) {
+  switch (mode) {
+    case TimerMode.focus:
+      return const _StagePalette(
+        accent: Color(0xFF8E3F2E),
+        lightBackground: Color(0xFFF6EDE7),
+        darkBackground: Color(0xFF241713),
+      );
+    case TimerMode.shortBreak:
+      return const _StagePalette(
+        accent: Color(0xFF2F7D57),
+        lightBackground: Color(0xFFEAF4ED),
+        darkBackground: Color(0xFF102117),
+      );
+    case TimerMode.longBreak:
+      return const _StagePalette(
+        accent: Color(0xFF236A91),
+        lightBackground: Color(0xFFE8F1F7),
+        darkBackground: Color(0xFF0F1D27),
+      );
+  }
 }
 
 IconData _themeModeIcon(AppThemeMode mode) {
