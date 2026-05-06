@@ -32,7 +32,6 @@ class _FocusHeatmapState extends State<FocusHeatmap> {
 
     return RepaintBoundary(
       child: Card(
-        color: Colors.white,
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
@@ -72,9 +71,9 @@ class _FocusHeatmapState extends State<FocusHeatmap> {
               const SizedBox(height: 12),
               Text(
                 '${_scopeLabel(now, _scope)} · $activeDays 天 · ${_formatDuration(totalSeconds)}',
-                style: Theme.of(
-                  context,
-                ).textTheme.bodySmall?.copyWith(color: const Color(0xFF6A7178)),
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
               const SizedBox(height: 14),
               _scope == HeatmapScope.month
@@ -187,6 +186,7 @@ class _HeatmapTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     final color = cell.inScope
         ? _heatColor(context, cell.seconds)
         : const Color(0x00FFFFFF);
@@ -202,8 +202,8 @@ class _HeatmapTile extends StatelessWidget {
                 '${cell.date!.day}',
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
                   color: cell.seconds > 0
-                      ? Colors.white
-                      : const Color(0xFF6A7178),
+                      ? scheme.onPrimary
+                      : scheme.onSurfaceVariant,
                 ),
               ),
             ),
@@ -227,9 +227,9 @@ class _HeatmapLegend extends StatelessWidget {
       children: [
         Text(
           '少',
-          style: Theme.of(
-            context,
-          ).textTheme.labelSmall?.copyWith(color: const Color(0xFF6A7178)),
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
         ),
         const SizedBox(width: 8),
         for (final seconds in const [
@@ -251,9 +251,9 @@ class _HeatmapLegend extends StatelessWidget {
         const SizedBox(width: 4),
         Text(
           '多',
-          style: Theme.of(
-            context,
-          ).textTheme.labelSmall?.copyWith(color: const Color(0xFF6A7178)),
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
         ),
       ],
     );
@@ -315,10 +315,10 @@ _HeatmapCell _cellFor(DateTime date, Map<String, int> values) {
 }
 
 Color _heatColor(BuildContext context, int seconds) {
-  if (seconds <= 0) {
-    return const Color(0xFFE8ECE8);
-  }
   final scheme = Theme.of(context).colorScheme;
+  if (seconds <= 0) {
+    return scheme.surfaceContainerHighest;
+  }
   final progress = (seconds / (90 * 60)).clamp(0.0, 1.0);
   return Color.lerp(
     scheme.primary.withAlpha((0.35 * 255).round()),

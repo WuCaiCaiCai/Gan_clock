@@ -11,9 +11,11 @@ void main() {
     expect(settings.completionSoundEnabled, isFalse);
     expect(settings.completionHapticsEnabled, isTrue);
     expect(settings.idleFocusSeconds, 30);
+    expect(settings.darkModeEnabled, isFalse);
     expect(AppSettings.fromJson(const {}).completionSoundEnabled, isFalse);
     expect(AppSettings.fromJson(const {}).completionHapticsEnabled, isTrue);
     expect(AppSettings.fromJson(const {}).idleFocusSeconds, 30);
+    expect(AppSettings.fromJson(const {}).darkModeEnabled, isFalse);
   });
 
   test('completes focus session and advances to short break', () {
@@ -81,9 +83,62 @@ void main() {
     expect(stopped.sessions, isEmpty);
   });
 
+  test('completed focus shorter than one minute is not recorded', () {
+    final start = DateTime(2026, 1, 1, 9);
+    final data = TomatoData.initial().copyWith(
+      timer:
+          const TimerSnapshot(
+            mode: TimerMode.focus,
+            phase: TimerPhase.running,
+            totalSeconds: 30,
+            remainingSeconds: 1,
+          ).copyWith(
+            startedAt: start,
+            endsAt: start.add(const Duration(seconds: 1)),
+          ),
+    );
+
+    final result = engine.tick(data, at: start.add(const Duration(seconds: 2)));
+
+    expect(result.completedMode, TimerMode.focus);
+    expect(result.data.timer.mode, TimerMode.shortBreak);
+    expect(result.data.focusCycleCount, 0);
+    expect(result.data.sessions, isEmpty);
+    expect(result.data.totalFocusSeconds, 0);
+    expect(result.data.focusSecondsByDay(), isEmpty);
+  });
+
+  test('stats ignore imported sessions shorter than one minute', () {
+    final now = DateTime(2026, 1, 1, 9);
+    final data = TomatoData.initial().copyWith(
+      sessions: [
+        FocusSession(
+          id: 'short',
+          startedAt: now,
+          endedAt: now.add(const Duration(seconds: 30)),
+          plannedSeconds: 30,
+          focusedSeconds: 30,
+          completed: true,
+        ),
+        FocusSession(
+          id: 'valid',
+          startedAt: now,
+          endedAt: now.add(const Duration(minutes: 1)),
+          plannedSeconds: 60,
+          focusedSeconds: 60,
+          completed: true,
+        ),
+      ],
+    );
+
+    expect(data.totalFocusSeconds, 60);
+    expect(data.focusSecondsByDay(), {dateKey(now): 60});
+  });
+
   test('settings serialize completion feedback switches', () {
     final settings = const AppSettings(
       idleFocusSeconds: 75,
+      darkModeEnabled: true,
       completionSoundEnabled: false,
       completionHapticsEnabled: false,
     );
@@ -91,6 +146,7 @@ void main() {
     final decoded = AppSettings.fromJson(settings.toJson());
 
     expect(decoded.idleFocusSeconds, 75);
+    expect(decoded.darkModeEnabled, isTrue);
     expect(decoded.completionSoundEnabled, isFalse);
     expect(decoded.completionHapticsEnabled, isFalse);
   });

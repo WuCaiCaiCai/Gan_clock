@@ -78,8 +78,22 @@ void main() {
     await tester.tap(find.text('设置'));
     await tester.pumpAndSettle();
     expect(find.text('计时设置'), findsOneWidget);
+    expect(find.text('外观'), findsOneWidget);
     expect(find.text('切换提醒'), findsOneWidget);
     expect(find.text('WebDAV 同步'), findsOneWidget);
+
+    await tester.tap(find.text('外观'));
+    await tester.pumpAndSettle();
+    expect(find.text('夜间模式'), findsOneWidget);
+    await tester.tap(find.byType(SwitchListTile).last);
+    await tester.pumpAndSettle();
+    expect(controller.data.settings.darkModeEnabled, isTrue);
+    expect(
+      tester.widget<MaterialApp>(find.byType(MaterialApp)).themeMode,
+      ThemeMode.dark,
+    );
+    Navigator.of(tester.element(find.text('夜间模式'))).pop();
+    await tester.pumpAndSettle();
 
     await tester.tap(find.text('切换提醒'));
     await tester.pumpAndSettle();

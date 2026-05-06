@@ -42,29 +42,51 @@ class _TomatoAppState extends State<TomatoApp> {
 
   @override
   Widget build(BuildContext context) {
-    return AppScope(
-      controller: _controller,
-      child: MaterialApp(
-        title: 'TomatoClock',
-        debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          useMaterial3: true,
-          colorScheme: ColorScheme.fromSeed(
-            seedColor: const Color(0xFFD1493F),
-            brightness: Brightness.light,
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, _) {
+        final themeMode = _controller.data.settings.darkModeEnabled
+            ? ThemeMode.dark
+            : ThemeMode.light;
+        return AppScope(
+          controller: _controller,
+          child: MaterialApp(
+            title: 'TomatoClock',
+            debugShowCheckedModeBanner: false,
+            theme: _buildAppTheme(Brightness.light),
+            darkTheme: _buildAppTheme(Brightness.dark),
+            themeMode: themeMode,
+            home: const TomatoHomePage(),
           ),
-          scaffoldBackgroundColor: const Color(0xFFF8F5F1),
-          cardTheme: const CardThemeData(
-            elevation: 0,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.all(Radius.circular(8)),
-            ),
-          ),
-        ),
-        home: const TomatoHomePage(),
-      ),
+        );
+      },
     );
   }
+}
+
+ThemeData _buildAppTheme(Brightness brightness) {
+  final scheme = ColorScheme.fromSeed(
+    seedColor: const Color(0xFFD1493F),
+    brightness: brightness,
+  );
+  final dark = brightness == Brightness.dark;
+  return ThemeData(
+    useMaterial3: true,
+    colorScheme: scheme,
+    scaffoldBackgroundColor: dark
+        ? const Color(0xFF12110F)
+        : const Color(0xFFF8F5F1),
+    cardTheme: CardThemeData(
+      elevation: 0,
+      color: dark ? const Color(0xFF1C1A18) : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.all(Radius.circular(8)),
+      ),
+    ),
+    bottomSheetTheme: BottomSheetThemeData(
+      backgroundColor: dark ? const Color(0xFF1C1A18) : Colors.white,
+    ),
+  );
 }
 
 class AppScope extends InheritedNotifier<AppController> {
@@ -339,7 +361,12 @@ class _StatsPage extends StatelessWidget {
             const SizedBox(height: 16),
             FocusHeatmap(focusSecondsByDay: data.focusSecondsByDay()),
             const SizedBox(height: 16),
-            _RecentSessions(sessions: data.sessions.take(8).toList()),
+            _RecentSessions(
+              sessions: data.sessions
+                  .where((session) => session.isRecordable)
+                  .take(8)
+                  .toList(),
+            ),
           ],
         ),
       ),
@@ -362,7 +389,6 @@ class _SettingsPage extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
           children: [
             Card(
-              color: Colors.white,
               child: Column(
                 children: [
                   ListTile(
@@ -373,6 +399,20 @@ class _SettingsPage extends StatelessWidget {
                     ),
                     trailing: const Icon(Icons.chevron_right),
                     onTap: () => _openTimerSettings(context),
+                  ),
+                  const Divider(height: 1, indent: 56),
+                  ListTile(
+                    leading: Icon(
+                      settings.darkModeEnabled
+                          ? Icons.dark_mode
+                          : Icons.dark_mode_outlined,
+                    ),
+                    title: const Text('外观'),
+                    subtitle: Text(
+                      settings.darkModeEnabled ? '夜间模式开启' : '夜间模式关闭',
+                    ),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => _openAppearanceSettings(context),
                   ),
                   const Divider(height: 1, indent: 56),
                   ListTile(
@@ -424,6 +464,14 @@ class _SettingsPage extends StatelessWidget {
       context: context,
       showDragHandle: true,
       builder: (_) => const _FeedbackSettingsSheet(),
+    );
+  }
+
+  void _openAppearanceSettings(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (_) => const _AppearanceSettingsSheet(),
     );
   }
 
@@ -607,7 +655,9 @@ class _TimerProgressRingState extends State<TimerProgressRing>
     final total = math.max(1, widget.snapshot.totalSeconds);
     final elapsed = (total - widget.snapshot.remainingSeconds).clamp(0, total);
     final progress = elapsed / total;
-    final textTheme = Theme.of(context).textTheme;
+    final theme = Theme.of(context);
+    final textTheme = theme.textTheme;
+    final scheme = theme.colorScheme;
 
     return Center(
       child: AnimatedBuilder(
@@ -634,6 +684,7 @@ class _TimerProgressRingState extends State<TimerProgressRing>
                         painter: _RingPainter(
                           progress: animatedProgress,
                           color: widget.color,
+                          trackColor: scheme.surfaceContainerHighest,
                           haloOpacity: _haloAnimation.value,
                         ),
                       ),
@@ -657,7 +708,7 @@ class _TimerProgressRingState extends State<TimerProgressRing>
                               formatClock(widget.snapshot.remainingSeconds),
                               style: textTheme.displayMedium?.copyWith(
                                 fontWeight: FontWeight.w700,
-                                color: const Color(0xFF202124),
+                                color: scheme.onSurface,
                                 fontFeatures: const [
                                   FontFeature.tabularFigures(),
                                 ],
@@ -670,7 +721,7 @@ class _TimerProgressRingState extends State<TimerProgressRing>
                                 _phaseLabel(widget.snapshot.phase),
                                 key: ValueKey(widget.snapshot.phase),
                                 style: textTheme.titleMedium?.copyWith(
-                                  color: const Color(0xFF5F656B),
+                                  color: scheme.onSurfaceVariant,
                                 ),
                               ),
                             ),
@@ -693,11 +744,13 @@ class _RingPainter extends CustomPainter {
   const _RingPainter({
     required this.progress,
     required this.color,
+    required this.trackColor,
     required this.haloOpacity,
   });
 
   final double progress;
   final Color color;
+  final Color trackColor;
   final double haloOpacity;
 
   @override
@@ -710,7 +763,7 @@ class _RingPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = stroke
       ..strokeCap = StrokeCap.round
-      ..color = const Color(0xFFE5DFD8);
+      ..color = trackColor;
     final foreground = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = stroke
@@ -739,6 +792,7 @@ class _RingPainter extends CustomPainter {
   bool shouldRepaint(covariant _RingPainter oldDelegate) {
     return oldDelegate.progress != progress ||
         oldDelegate.color != color ||
+        oldDelegate.trackColor != trackColor ||
         oldDelegate.haloOpacity != haloOpacity;
   }
 }
@@ -787,7 +841,7 @@ class _TodayStats extends StatelessWidget {
   Widget build(BuildContext context) {
     final today = dateKey(DateTime.now());
     final todaySessions = data.sessions
-        .where((session) => session.completed && session.dayKey == today)
+        .where((session) => session.isRecordable && session.dayKey == today)
         .toList();
     final todaySeconds = todaySessions.fold<int>(
       0,
@@ -860,7 +914,6 @@ class _StatCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Card(
-      color: Colors.white,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Row(
@@ -882,7 +935,7 @@ class _StatCard extends StatelessWidget {
                   Text(
                     detail,
                     style: theme.textTheme.bodySmall?.copyWith(
-                      color: const Color(0xFF6A7178),
+                      color: theme.colorScheme.onSurfaceVariant,
                     ),
                   ),
                 ],
@@ -1046,6 +1099,43 @@ class _FeedbackSettingsSheet extends StatelessWidget {
             onChanged: (value) {
               controller.updateSettings(
                 settings.copyWith(completionSoundEnabled: value),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AppearanceSettingsSheet extends StatelessWidget {
+  const _AppearanceSettingsSheet();
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = AppScope.watch(context);
+    final settings = controller.data.settings;
+
+    return SafeArea(
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+        shrinkWrap: true,
+        children: [
+          Text('外观', style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 12),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            secondary: Icon(
+              settings.darkModeEnabled
+                  ? Icons.dark_mode
+                  : Icons.dark_mode_outlined,
+            ),
+            title: const Text('夜间模式'),
+            subtitle: const Text('使用深色背景和低亮度界面，适合夜间专注'),
+            value: settings.darkModeEnabled,
+            onChanged: (value) {
+              controller.updateSettings(
+                settings.copyWith(darkModeEnabled: value),
               );
             },
           ),

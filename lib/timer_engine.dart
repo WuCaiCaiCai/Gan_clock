@@ -158,27 +158,30 @@ class TomatoTimerEngine {
     final current = data.timer;
     final sessions = [...data.sessions];
     var cycleCount = data.focusCycleCount;
+    var nextMode = TimerMode.focus;
 
     if (current.mode == TimerMode.focus) {
-      cycleCount += 1;
-      sessions.insert(
-        0,
-        FocusSession(
-          id: 'focus-${now.microsecondsSinceEpoch}',
-          startedAt:
-              current.startedAt ??
-              now.subtract(Duration(seconds: current.totalSeconds)),
-          endedAt: now,
-          plannedSeconds: current.totalSeconds,
-          focusedSeconds: current.totalSeconds,
-          completed: true,
-        ),
-      );
+      final focusedSeconds = current.totalSeconds;
+      if (focusedSeconds >= FocusSession.minimumRecordedSeconds) {
+        cycleCount += 1;
+        sessions.insert(
+          0,
+          FocusSession(
+            id: 'focus-${now.microsecondsSinceEpoch}',
+            startedAt:
+                current.startedAt ??
+                now.subtract(Duration(seconds: current.totalSeconds)),
+            endedAt: now,
+            plannedSeconds: current.totalSeconds,
+            focusedSeconds: focusedSeconds,
+            completed: true,
+          ),
+        );
+        nextMode = _nextBreakMode(cycleCount, data.settings);
+      } else {
+        nextMode = TimerMode.shortBreak;
+      }
     }
-
-    final nextMode = current.mode == TimerMode.focus
-        ? _nextBreakMode(cycleCount, data.settings)
-        : TimerMode.focus;
 
     return data.copyWith(
       sessions: sessions,

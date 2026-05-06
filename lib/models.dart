@@ -109,6 +109,7 @@ class AppSettings {
     this.longBreakMinutes = 15,
     this.roundsBeforeLongBreak = 4,
     this.idleFocusSeconds = 30,
+    this.darkModeEnabled = false,
     this.completionSoundEnabled = false,
     this.completionHapticsEnabled = true,
     this.webDav = const WebDavSettings(),
@@ -119,6 +120,7 @@ class AppSettings {
   final int longBreakMinutes;
   final int roundsBeforeLongBreak;
   final int idleFocusSeconds;
+  final bool darkModeEnabled;
   final bool completionSoundEnabled;
   final bool completionHapticsEnabled;
   final WebDavSettings webDav;
@@ -129,6 +131,7 @@ class AppSettings {
     int? longBreakMinutes,
     int? roundsBeforeLongBreak,
     int? idleFocusSeconds,
+    bool? darkModeEnabled,
     bool? completionSoundEnabled,
     bool? completionHapticsEnabled,
     WebDavSettings? webDav,
@@ -140,6 +143,7 @@ class AppSettings {
       roundsBeforeLongBreak:
           roundsBeforeLongBreak ?? this.roundsBeforeLongBreak,
       idleFocusSeconds: idleFocusSeconds ?? this.idleFocusSeconds,
+      darkModeEnabled: darkModeEnabled ?? this.darkModeEnabled,
       completionSoundEnabled:
           completionSoundEnabled ?? this.completionSoundEnabled,
       completionHapticsEnabled:
@@ -155,6 +159,7 @@ class AppSettings {
       'longBreakMinutes': longBreakMinutes,
       'roundsBeforeLongBreak': roundsBeforeLongBreak,
       'idleFocusSeconds': idleFocusSeconds,
+      'darkModeEnabled': darkModeEnabled,
       'completionSoundEnabled': completionSoundEnabled,
       'completionHapticsEnabled': completionHapticsEnabled,
       'webDav': webDav.toJson(),
@@ -176,6 +181,7 @@ class AppSettings {
         4,
       ),
       idleFocusSeconds: _boundedInt(value['idleFocusSeconds'], 5, 600, 30),
+      darkModeEnabled: value['darkModeEnabled'] as bool? ?? false,
       completionSoundEnabled: value['completionSoundEnabled'] as bool? ?? false,
       completionHapticsEnabled:
           value['completionHapticsEnabled'] as bool? ?? true,
@@ -185,6 +191,8 @@ class AppSettings {
 }
 
 class FocusSession {
+  static const minimumRecordedSeconds = 60;
+
   const FocusSession({
     required this.id,
     required this.startedAt,
@@ -202,6 +210,9 @@ class FocusSession {
   final bool completed;
 
   String get dayKey => dateKey(endedAt);
+
+  bool get isRecordable =>
+      completed && focusedSeconds >= minimumRecordedSeconds;
 
   Map<String, Object?> toJson() {
     return {
@@ -356,13 +367,13 @@ class TomatoData {
 
   int get totalFocusSeconds {
     return sessions
-        .where((session) => session.completed)
+        .where((session) => session.isRecordable)
         .fold<int>(0, (total, session) => total + session.focusedSeconds);
   }
 
   Map<String, int> focusSecondsByDay() {
     final result = <String, int>{};
-    for (final session in sessions.where((item) => item.completed)) {
+    for (final session in sessions.where((item) => item.isRecordable)) {
       result.update(
         session.dayKey,
         (value) => value + session.focusedSeconds,
