@@ -46,6 +46,35 @@ class PlatformControls {
     await _invokeSilently('enterPictureInPicture');
   }
 
+  static Future<String?> pickDirectory() async {
+    try {
+      return await _channel.invokeMethod<String>('pickDirectory');
+    } on MissingPluginException {
+      return null;
+    } on PlatformException {
+      return null;
+    }
+  }
+
+  static Future<void> vibrate({required int durationMs, int? amplitude}) async {
+    final arguments = <String, Object?>{'durationMs': durationMs};
+    if (amplitude case final amplitude?) {
+      arguments['amplitude'] = amplitude;
+    }
+    await _invokeSilently('vibrate', arguments);
+  }
+
+  static Future<void> vibratePattern({
+    required List<int> timingsMs,
+    List<int>? amplitudes,
+  }) async {
+    final arguments = <String, Object?>{'timingsMs': timingsMs};
+    if (amplitudes != null) {
+      arguments['amplitudes'] = amplitudes;
+    }
+    await _invokeSilently('vibratePattern', arguments);
+  }
+
   static Future<void> _invokeSilently(
     String method, [
     Map<String, Object?>? arguments,

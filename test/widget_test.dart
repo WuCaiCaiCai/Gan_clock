@@ -106,7 +106,7 @@ void main() {
       tester.widget<MaterialApp>(find.byType(MaterialApp)).themeMode,
       ThemeMode.dark,
     );
-    Navigator.of(tester.element(find.text('跟随系统').last)).pop();
+    await tester.tap(find.byIcon(Icons.arrow_back));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('切换提醒'));
@@ -114,82 +114,90 @@ void main() {
     expect(find.text('切换震动'), findsOneWidget);
     expect(find.text('切换音效'), findsOneWidget);
 
-    Navigator.of(tester.element(find.text('切换提醒').last)).pop();
+    await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
+    expect(find.text('计时设置'), findsOneWidget);
+    expect(find.text('切换震动'), findsNothing);
 
     await tester.tap(find.text('备份'));
     await tester.pumpAndSettle();
     expect(find.text('本地备份'), findsOneWidget);
     expect(find.text('备份目录'), findsOneWidget);
     expect(find.text('立即同步'), findsOneWidget);
-    expect(find.text('自动同步'), findsOneWidget);
+    expect(find.text('自动同步'), findsWidgets);
     expect(find.text('WebDAV 设置'), findsOneWidget);
+
+    await tester.tap(find.text('WebDAV 设置'));
+    await tester.pumpAndSettle();
+    expect(find.text('WebDAV 备份'), findsOneWidget);
+    expect(find.text('服务地址'), findsOneWidget);
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.text('备份'), findsWidgets);
+    expect(find.text('本地备份'), findsOneWidget);
+    expect(find.text('服务地址'), findsNothing);
 
     controller.dispose();
   });
 
-  testWidgets(
-    'number stepper accepts integer input and keeps configured step',
-    (WidgetTester tester) async {
-      var minutes = 25;
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: StatefulBuilder(
-              builder: (context, setState) {
-                return NumberStepper(
-                  icon: Icons.timer_outlined,
-                  label: '专注时长',
-                  value: minutes,
-                  min: 1,
-                  max: 240,
-                  step: 5,
-                  suffix: '分钟',
-                  onChanged: (value) => setState(() => minutes = value),
-                );
-              },
-            ),
+  testWidgets('number stepper accepts integer input', (
+    WidgetTester tester,
+  ) async {
+    var minutes = 25;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StatefulBuilder(
+            builder: (context, setState) {
+              return NumberStepper(
+                icon: Icons.timer_outlined,
+                label: '专注时长',
+                value: minutes,
+                min: 1,
+                max: 240,
+                suffix: '分钟',
+                onChanged: (value) => setState(() => minutes = value),
+              );
+            },
           ),
         ),
-      );
-      await tester.pump();
+      ),
+    );
+    await tester.pump();
 
-      await tester.tap(find.byIcon(Icons.add_circle_outline));
-      await tester.pump();
-      expect(minutes, 30);
+    await tester.enterText(find.byType(TextField), '37');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+    expect(minutes, 37);
 
-      await tester.enterText(find.byType(TextField), '37');
-      await tester.testTextInput.receiveAction(TextInputAction.done);
-      await tester.pump();
-      expect(minutes, 37);
-
-      var rounds = 4;
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: StatefulBuilder(
-              builder: (context, setState) {
-                return NumberStepper(
-                  icon: Icons.repeat,
-                  label: '长休间隔',
-                  value: rounds,
-                  min: 1,
-                  max: 12,
-                  suffix: '轮',
-                  onChanged: (value) => setState(() => rounds = value),
-                );
-              },
-            ),
+    var rounds = 4;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StatefulBuilder(
+            builder: (context, setState) {
+              return NumberStepper(
+                icon: Icons.repeat,
+                label: '长休间隔',
+                value: rounds,
+                min: 1,
+                max: 12,
+                suffix: '轮',
+                onChanged: (value) => setState(() => rounds = value),
+              );
+            },
           ),
         ),
-      );
-      await tester.pump();
+      ),
+    );
+    await tester.pump();
 
-      await tester.tap(find.byIcon(Icons.add_circle_outline));
-      await tester.pump();
-      expect(rounds, 5);
-    },
-  );
+    await tester.enterText(find.byType(TextField), '8');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+    expect(rounds, 8);
+  });
 
   testWidgets('hides chrome after timer page sits idle', (
     WidgetTester tester,

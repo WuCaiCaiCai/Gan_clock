@@ -85,6 +85,7 @@ class AppController extends ChangeNotifier {
 
   Future<void> start() async {
     await _replaceData(_timerEngine.start(_data));
+    unawaited(_completionFeedback.notifyStart(_data.settings));
   }
 
   Future<void> pause() async {

@@ -26,6 +26,9 @@ class RecordingCompletionFeedback implements CompletionFeedback {
   AppSettings? settings;
 
   @override
+  Future<void> notifyStart(AppSettings settings) => Future<void>.value();
+
+  @override
   Future<void> notify(TimerMode completedMode, AppSettings settings) {
     this.completedMode = completedMode;
     this.settings = settings;

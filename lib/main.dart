@@ -26,12 +26,15 @@ class TomatoApp extends StatefulWidget {
 class _TomatoAppState extends State<TomatoApp> {
   late final AppController _controller;
   late final bool _ownsController;
+  AppThemeMode _themeMode = AppThemeMode.system;
 
   @override
   void initState() {
     super.initState();
     _ownsController = widget.controller == null;
     _controller = widget.controller ?? AppController();
+    _controller.addListener(_onAppConfigChanged);
+    _themeMode = _controller.data.settings.themeMode;
     unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge));
     SystemChrome.setSystemUIOverlayStyle(
       const SystemUiOverlayStyle(
@@ -43,8 +46,18 @@ class _TomatoAppState extends State<TomatoApp> {
     unawaited(_controller.load());
   }
 
+  void _onAppConfigChanged() {
+    final newThemeMode = _controller.data.settings.themeMode;
+    if (newThemeMode != _themeMode) {
+      setState(() {
+        _themeMode = newThemeMode;
+      });
+    }
+  }
+
   @override
   void dispose() {
+    _controller.removeListener(_onAppConfigChanged);
     unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge));
     if (_ownsController) {
       _controller.dispose();
@@ -54,33 +67,21 @@ class _TomatoAppState extends State<TomatoApp> {
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, _) {
-        return AppScope(
-          controller: _controller,
-          child: MaterialApp(
-            title: '苷',
-            debugShowCheckedModeBanner: false,
-            theme: _buildAppTheme(Brightness.light),
-            darkTheme: _buildAppTheme(Brightness.dark),
-            themeMode: _flutterThemeMode(_controller.data.settings.themeMode),
-            home: const TomatoHomePage(),
-          ),
-        );
-      },
+    return AppScope(
+      controller: _controller,
+      child: MaterialApp(
+        title: '苷',
+        debugShowCheckedModeBanner: false,
+        theme: _buildAppTheme(Brightness.light),
+        darkTheme: _buildAppTheme(Brightness.dark),
+        themeMode: _flutterThemeMode(_themeMode),
+        home: const TomatoHomePage(),
+      ),
     );
   }
 }
 
 const _shelfSeedColor = Color(0xFF7B5A44);
-const _wenKaiFontFamily = 'LXGW WenKai';
-const _wenKaiFontFallback = <String>[
-  '霞鹜文楷',
-  '霞骛文楷',
-  'LXGW WenKai Screen',
-  'serif',
-];
 const _dockHeight = 58.0;
 const _dockBottomMargin = 14.0;
 const _dockHorizontalMargin = 24.0;
@@ -193,11 +194,18 @@ class _TomatoHomePageState extends State<TomatoHomePage>
   Timer? _pipChromeRestoreTimer;
   Timer? _pipReturnTimer;
   int _selectedIndex = 0;
+  bool _settingsSubPageOpen = false;
+  bool _statsSubPageOpen = false;
   bool _chromeHidden = false;
   bool _inPictureInPicture = false;
   bool _pipTransitioning = false;
   bool _returningFromPictureInPicture = false;
   bool _ignoreNextQuietTap = false;
+  bool? _lastKeepScreenOnSent;
+  bool? _lastPipEnabledSent;
+  String? _lastPipTitleSent;
+  String? _lastPipSubtitleSent;
+  bool? _lastPipKeepScreenOnSent;
 
   @override
   void initState() {
@@ -286,6 +294,8 @@ class _TomatoHomePageState extends State<TomatoHomePage>
         (_chromeHidden || pipPreview) &&
         _selectedIndex == 0 &&
         timer.phase == TimerPhase.running;
+    final settingsSubPageActive = _selectedIndex == 2 && _settingsSubPageOpen;
+    final statsSubPageActive = _selectedIndex == 1 && _statsSubPageOpen;
     _syncSystemUi(context, timer.mode, immersive: hideChrome);
 
     return Listener(
@@ -294,7 +304,7 @@ class _TomatoHomePageState extends State<TomatoHomePage>
       onPointerMove: (_) => _handleUserActivity(),
       onPointerSignal: (_) => _handleUserActivity(),
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 520),
+        duration: const Duration(milliseconds: 300),
         curve: Curves.easeOutCubic,
         color: _modePalette(timer.mode).backgroundFor(context),
         child: Scaffold(
@@ -325,7 +335,7 @@ class _TomatoHomePageState extends State<TomatoHomePage>
                               ),
                             ),
                     ),
-                    if (!pipPreview)
+                    if (!pipPreview && !settingsSubPageActive && !statsSubPageActive)
                       _FloatingDock(
                         hidden: hideChrome,
                         selectedIndex: _selectedIndex,
@@ -346,7 +356,7 @@ class _TomatoHomePageState extends State<TomatoHomePage>
     required bool expandFromPictureInPicture,
   }) {
     return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 95),
+      duration: const Duration(milliseconds: 60),
       switchInCurve: Curves.easeOutCubic,
       switchOutCurve: Curves.easeInCubic,
       transitionBuilder: (child, animation) {
@@ -384,9 +394,16 @@ class _TomatoHomePageState extends State<TomatoHomePage>
           onEnterPictureInPicture: _enterPictureInPicture,
         );
       case 1:
-        return _StatsPage(data: data);
+        return _StatsPage(
+          data: data,
+          onSubPageOpenChanged: _handleStatsSubPageChanged,
+        );
       case 2:
-        return _SettingsPage(controller: controller, settings: data.settings);
+        return _SettingsPage(
+          controller: controller,
+          settings: data.settings,
+          onSubPageOpenChanged: _handleSettingsSubPageChanged,
+        );
       default:
         return _TimerPage(
           controller: controller,
@@ -404,11 +421,36 @@ class _TomatoHomePageState extends State<TomatoHomePage>
     if (_selectedIndex == index) {
       return;
     }
+    HapticFeedback.lightImpact();
     setState(() {
       _selectedIndex = index;
+      if (index != 2) {
+        _settingsSubPageOpen = false;
+      }
+      if (index != 1) {
+        _statsSubPageOpen = false;
+      }
       _chromeHidden = false;
     });
     _syncIdleChrome();
+  }
+
+  void _handleStatsSubPageChanged(bool open) {
+    if (!mounted || _statsSubPageOpen == open) {
+      return;
+    }
+    setState(() {
+      _statsSubPageOpen = open;
+    });
+  }
+
+  void _handleSettingsSubPageChanged(bool open) {
+    if (!mounted || _settingsSubPageOpen == open) {
+      return;
+    }
+    setState(() {
+      _settingsSubPageOpen = open;
+    });
   }
 
   void _requestQuiet() {
@@ -525,17 +567,35 @@ class _TomatoHomePageState extends State<TomatoHomePage>
       return;
     }
     final timer = controller.data.timer;
-    unawaited(
-      PlatformControls.setKeepScreenOn(
-        controller.data.settings.keepScreenOnEnabled,
-      ),
-    );
+    final keepScreenOn = controller.data.settings.keepScreenOnEnabled;
+    if (_lastKeepScreenOnSent != keepScreenOn) {
+      _lastKeepScreenOnSent = keepScreenOn;
+      unawaited(PlatformControls.setKeepScreenOn(keepScreenOn));
+    }
+
+    final pipEnabled = timer.phase == TimerPhase.running;
+    final pipTitle = formatClock(timer.remainingSeconds);
+    final pipSubtitle = timer.mode.label;
+    final pipNeedsTitleRefresh = _inPictureInPicture || _pipTransitioning;
+    final shouldSendPipState =
+        _lastPipEnabledSent != pipEnabled ||
+        _lastPipSubtitleSent != pipSubtitle ||
+        _lastPipKeepScreenOnSent != keepScreenOn ||
+        _lastPipTitleSent == null ||
+        (pipNeedsTitleRefresh && _lastPipTitleSent != pipTitle);
+    if (!shouldSendPipState) {
+      return;
+    }
+    _lastPipEnabledSent = pipEnabled;
+    _lastPipTitleSent = pipTitle;
+    _lastPipSubtitleSent = pipSubtitle;
+    _lastPipKeepScreenOnSent = keepScreenOn;
     unawaited(
       PlatformControls.setPipState(
-        enabled: timer.phase == TimerPhase.running,
-        title: formatClock(timer.remainingSeconds),
-        subtitle: timer.mode.label,
-        keepScreenOn: controller.data.settings.keepScreenOnEnabled,
+        enabled: pipEnabled,
+        title: pipTitle,
+        subtitle: pipSubtitle,
+        keepScreenOn: keepScreenOn,
       ),
     );
   }
@@ -571,7 +631,7 @@ class _TomatoHomePageState extends State<TomatoHomePage>
       _chromeHidden = true;
       _returningFromPictureInPicture = true;
     });
-    _pipReturnTimer = Timer(const Duration(milliseconds: 520), () {
+    _pipReturnTimer = Timer(const Duration(milliseconds: 280), () {
       if (!mounted) {
         return;
       }
@@ -585,7 +645,7 @@ class _TomatoHomePageState extends State<TomatoHomePage>
 
   void _restoreChromeAfterPictureInPicture() {
     _pipChromeRestoreTimer?.cancel();
-    _pipChromeRestoreTimer = Timer(const Duration(milliseconds: 560), () {
+    _pipChromeRestoreTimer = Timer(const Duration(milliseconds: 310), () {
       if (!mounted || _selectedIndex != 0 || _controller == null) {
         return;
       }
@@ -795,7 +855,7 @@ class _FloatingDock extends StatelessWidget {
   }
 }
 
-class _DockItem extends StatelessWidget {
+class _DockItem extends StatefulWidget {
   const _DockItem({
     required this.icon,
     required this.selectedIcon,
@@ -811,33 +871,62 @@ class _DockItem extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
+  State<_DockItem> createState() => _DockItemState();
+}
+
+class _DockItemState extends State<_DockItem> {
+  bool _pressed = false;
+
+  void _setPressed(bool value) {
+    if (_pressed == value || widget.selected) {
+      return;
+    }
+    setState(() {
+      _pressed = value;
+    });
+  }
+
+  void _handleTapDown(TapDownDetails details) {
+    _setPressed(true);
+    widget.onTap();
+  }
+
+  void _handleTapUp(TapUpDetails details) {
+    _setPressed(false);
+  }
+
+  void _handleTapCancel() {
+    _setPressed(false);
+  }
+
+  @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final selected = widget.selected;
+    final foreground = selected ? scheme.primary : scheme.onSurfaceVariant;
+    final backgroundAlpha = selected ? 32 : (_pressed ? 18 : 0);
+    final borderAlpha = selected ? 70 : (_pressed ? 28 : 0);
+
     return Expanded(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 2),
         child: SizedBox(
           height: 44,
-          child: InkWell(
-            onTap: selected ? null : onTap,
-            borderRadius: BorderRadius.circular(999),
-            splashFactory: NoSplash.splashFactory,
-            highlightColor: Colors.transparent,
-            splashColor: Colors.transparent,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTapDown: selected ? null : _handleTapDown,
+            onTapUp: selected ? null : _handleTapUp,
+            onTapCancel: selected ? null : _handleTapCancel,
             child: AnimatedContainer(
-              duration: const Duration(milliseconds: 95),
+              duration: const Duration(milliseconds: 70),
               curve: Curves.easeOutCubic,
               alignment: Alignment.center,
               padding: const EdgeInsets.symmetric(horizontal: 8),
               decoration: BoxDecoration(
-                color: selected
-                    ? scheme.primary.withAlpha(28)
-                    : Colors.transparent,
+                color: scheme.primary.withAlpha(backgroundAlpha),
                 borderRadius: BorderRadius.circular(999),
                 border: Border.all(
-                  color: selected
-                      ? scheme.primary.withAlpha(58)
-                      : Colors.transparent,
+                  color: scheme.primary.withAlpha(borderAlpha),
                 ),
               ),
               child: Row(
@@ -845,20 +934,18 @@ class _DockItem extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(
-                    selected ? selectedIcon : icon,
+                    selected ? widget.selectedIcon : widget.icon,
                     size: 20,
-                    color: selected ? scheme.primary : scheme.onSurfaceVariant,
+                    color: foreground,
                   ),
                   const SizedBox(width: 6),
                   Flexible(
                     child: Text(
-                      label,
+                      widget.label,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                        color: selected
-                            ? scheme.primary
-                            : scheme.onSurfaceVariant,
+                        color: foreground,
                         fontWeight: selected
                             ? FontWeight.w700
                             : FontWeight.w500,
@@ -893,11 +980,11 @@ class _ChromeFade extends StatelessWidget {
       ignoring: hidden,
       child: AnimatedOpacity(
         opacity: hidden ? 0 : 1,
-        duration: const Duration(milliseconds: 260),
+        duration: const Duration(milliseconds: 150),
         curve: Curves.easeOutCubic,
         child: AnimatedSlide(
           offset: hidden ? slideOffset : Offset.zero,
-          duration: const Duration(milliseconds: 260),
+          duration: const Duration(milliseconds: 150),
           curve: Curves.easeOutCubic,
           child: child,
         ),
@@ -919,7 +1006,7 @@ class _PipReturnScale extends StatelessWidget {
     }
     return TweenAnimationBuilder<double>(
       tween: Tween<double>(begin: 0.62, end: 1),
-      duration: const Duration(milliseconds: 520),
+      duration: const Duration(milliseconds: 280),
       curve: Curves.easeOutCubic,
       child: child,
       builder: (context, scale, child) {
@@ -960,44 +1047,316 @@ class _PhasePill extends StatelessWidget {
   }
 }
 
-class _StatsPage extends StatelessWidget {
-  const _StatsPage({required this.data});
+class _StatsPage extends StatefulWidget {
+  const _StatsPage({required this.data, required this.onSubPageOpenChanged});
 
   final TomatoData data;
+  final ValueChanged<bool> onSubPageOpenChanged;
+
+  @override
+  State<_StatsPage> createState() => _StatsPageState();
+}
+
+class _StatsPageState extends State<_StatsPage> {
+  FocusSession? _selectedSession;
+
+  void _openSession(FocusSession session) {
+    setState(() => _selectedSession = session);
+    widget.onSubPageOpenChanged(true);
+  }
+
+  void _closeSession() {
+    setState(() => _selectedSession = null);
+    widget.onSubPageOpenChanged(false);
+  }
+
+  @override
+  void dispose() {
+    widget.onSubPageOpenChanged(false);
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 720),
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 24, 20, 112),
-          children: [
-            _TodayStats(data: data),
-            const SizedBox(height: 16),
-            FocusHeatmap(focusSecondsByDay: data.focusSecondsByDay()),
-            const SizedBox(height: 16),
-            _RecentSessions(
-              sessions: data.sessions
-                  .where((session) => session.isRecordable)
-                  .take(8)
-                  .toList(),
-            ),
-          ],
-        ),
+    final sessions = widget.data.sessions
+        .where((session) => session.isRecordable)
+        .take(8)
+        .toList();
+
+    return PopScope<void>(
+      canPop: _selectedSession == null,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && _selectedSession != null) {
+          _closeSession();
+        }
+      },
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 60),
+        switchInCurve: Curves.easeOutCubic,
+        transitionBuilder: (child, animation) {
+          return FadeTransition(opacity: animation, child: child);
+        },
+        child: _selectedSession != null
+            ? KeyedSubtree(
+                key: const ValueKey('session-detail'),
+                child: _SessionDetail(
+                  session: _selectedSession!,
+                  onBack: _closeSession,
+                ),
+              )
+            : KeyedSubtree(
+                key: const ValueKey('stats-main'),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 720),
+                    child: ListView(
+                      padding: const EdgeInsets.fromLTRB(20, 24, 20, 112),
+                      children: [
+                        _TodayStats(data: widget.data),
+                        const SizedBox(height: 16),
+                        FocusHeatmap(
+                          focusSecondsByDay: widget.data.focusSecondsByDay(),
+                        ),
+                        const SizedBox(height: 16),
+                        _RecentSessions(
+                          sessions: sessions,
+                          onTap: _openSession,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
       ),
     );
   }
 }
 
-class _SettingsPage extends StatelessWidget {
-  const _SettingsPage({required this.controller, required this.settings});
+class _SessionDetail extends StatelessWidget {
+  const _SessionDetail({required this.session, required this.onBack});
 
-  final AppController controller;
-  final AppSettings settings;
+  final FocusSession session;
+  final VoidCallback onBack;
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 8, 20, 8),
+          child: Row(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.arrow_back_ios_new, size: 20),
+                onPressed: onBack,
+              ),
+              const SizedBox(width: 4),
+              Text('专注详情', style: theme.textTheme.titleLarge),
+            ],
+          ),
+        ),
+        Expanded(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 720),
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 48),
+                children: [
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(18),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.local_fire_department_outlined,
+                                color: scheme.primary,
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  formatDateTime(session.endedAt),
+                                  style: theme.textTheme.titleMedium,
+                                ),
+                              ),
+                              Icon(
+                                session.completed
+                                    ? Icons.check_circle_outline
+                                    : Icons.stop_circle_outlined,
+                                color: session.completed
+                                    ? const Color(0xFF2F7D57)
+                                    : scheme.error,
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          _DetailRow(
+                            icon: Icons.timer_outlined,
+                            label: '专注时长',
+                            value: formatHours(session.focusedSeconds),
+                          ),
+                          const SizedBox(height: 10),
+                          _DetailRow(
+                            icon: Icons.schedule,
+                            label: '计划时长',
+                            value: formatHours(session.plannedSeconds),
+                          ),
+                          const SizedBox(height: 10),
+                          _DetailRow(
+                            icon: Icons.play_arrow_outlined,
+                            label: '开始时间',
+                            value: formatDateTime(session.startedAt),
+                          ),
+                          const SizedBox(height: 10),
+                          _DetailRow(
+                            icon: Icons.stop_outlined,
+                            label: '结束时间',
+                            value: formatDateTime(session.endedAt),
+                          ),
+                          const SizedBox(height: 10),
+                          _DetailRow(
+                            icon: Icons.check_outlined,
+                            label: '状态',
+                            value: session.completed ? '完成' : '已停止',
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _DetailRow extends StatelessWidget {
+  const _DetailRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Row(
+      children: [
+        Icon(icon, size: 20, color: scheme.onSurfaceVariant),
+        const SizedBox(width: 10),
+        Text(label, style: Theme.of(context).textTheme.bodyMedium),
+        const Spacer(),
+        Text(
+          value,
+          style: Theme.of(
+            context,
+          ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+        ),
+      ],
+    );
+  }
+}
+
+class _SettingsPage extends StatefulWidget {
+  const _SettingsPage({
+    required this.controller,
+    required this.settings,
+    required this.onSubPageOpenChanged,
+  });
+
+  final AppController controller;
+  final AppSettings settings;
+  final ValueChanged<bool> onSubPageOpenChanged;
+
+  @override
+  State<_SettingsPage> createState() => _SettingsPageState();
+}
+
+class _SettingsPageState extends State<_SettingsPage> {
+  int _subPage = 0;
+  int _backupSubPage = 0; // 0 = backup main, 1 = webdav
+
+  static const _pages = ['', '计时设置', '切换提醒', '外观', '备份'];
+
+  @override
+  void dispose() {
+    widget.onSubPageOpenChanged(false);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope<void>(
+      canPop: _subPage == 0,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) {
+          _goBack();
+        }
+      },
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 60),
+        switchInCurve: Curves.easeOutCubic,
+        transitionBuilder: (child, animation) {
+          return FadeTransition(opacity: animation, child: child);
+        },
+        child: KeyedSubtree(
+          key: ValueKey('settings-$_subPage-$_backupSubPage'),
+          child: _subPage == 0 ? _buildMain() : _buildSubPage(),
+        ),
+      ),
+    );
+  }
+
+  void _goBack() {
+    if (_subPage == 4 && _backupSubPage == 1) {
+      setState(() => _backupSubPage = 0);
+      return;
+    }
+    if (_subPage != 0) {
+      _setPageState(() {
+        _subPage = 0;
+        _backupSubPage = 0;
+      });
+    }
+  }
+
+  void _openSubPage(int page) {
+    _setPageState(() {
+      _subPage = page;
+      _backupSubPage = 0;
+    });
+  }
+
+  void _openWebDavSubPage() {
+    _setPageState(() {
+      _subPage = 4;
+      _backupSubPage = 1;
+    });
+  }
+
+  void _setPageState(VoidCallback update) {
+    final wasOpen = _subPage != 0;
+    setState(update);
+    final isOpen = _subPage != 0;
+    if (wasOpen != isOpen) {
+      widget.onSubPageOpenChanged(isOpen);
+    }
+  }
+
+  Widget _buildMain() {
+    final controller = AppScope.read(context);
+    final settings = controller.data.settings;
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 720),
@@ -1012,15 +1371,15 @@ class _SettingsPage extends StatelessWidget {
                     title: const Text('计时设置'),
                     subtitle: const Text('时长、循环和静默显示'),
                     trailing: const Icon(Icons.chevron_right),
-                    onTap: () => _openTimerSettings(context),
+                    onTap: () => _openSubPage(1),
                   ),
                   const Divider(height: 1, indent: 56),
                   ListTile(
                     leading: Icon(_themeModeIcon(settings.themeMode)),
                     title: const Text('外观'),
-                    subtitle: const Text('主题模式'),
+                    subtitle: Text(settings.themeMode.label),
                     trailing: const Icon(Icons.chevron_right),
-                    onTap: () => _openAppearanceSettings(context),
+                    onTap: () => _openSubPage(3),
                   ),
                   const Divider(height: 1, indent: 56),
                   ListTile(
@@ -1028,7 +1387,7 @@ class _SettingsPage extends StatelessWidget {
                     title: const Text('切换提醒'),
                     subtitle: const Text('震动和音效'),
                     trailing: const Icon(Icons.chevron_right),
-                    onTap: () => _openFeedbackSettings(context),
+                    onTap: () => _openSubPage(2),
                   ),
                   const Divider(height: 1, indent: 56),
                   ListTile(
@@ -1036,7 +1395,7 @@ class _SettingsPage extends StatelessWidget {
                     title: const Text('备份'),
                     subtitle: const Text('本地和 WebDAV'),
                     trailing: const Icon(Icons.chevron_right),
-                    onTap: () => _openBackupSettings(context),
+                    onTap: () => _openSubPage(4),
                   ),
                 ],
               ),
@@ -1047,63 +1406,138 @@ class _SettingsPage extends StatelessWidget {
     );
   }
 
-  void _openTimerSettings(BuildContext context) {
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (_) => const _TimerSettingsSheet(),
-    );
-  }
-
-  void _openFeedbackSettings(BuildContext context) {
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (_) => const _FeedbackSettingsSheet(),
-    );
-  }
-
-  void _openAppearanceSettings(BuildContext context) {
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (_) => const _AppearanceSettingsSheet(),
-    );
-  }
-
-  void _openBackupSettings(BuildContext context) {
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (_) {
-        final height = MediaQuery.sizeOf(context).height * 0.86;
-        return SizedBox(
-          height: height,
-          child: AnimatedBuilder(
-            animation: controller,
-            builder: (context, _) {
-              return _BackupPage(
-                controller: controller,
-                settings: controller.data.settings,
-              );
-            },
+  Widget _buildSubPage() {
+    final title = _backupSubPage == 1 ? 'WebDAV 备份' : _pages[_subPage];
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 12, 20, 10),
+          child: Row(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.arrow_back, size: 22),
+                tooltip: '返回',
+                onPressed: _goBack,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  title,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
           ),
-        );
-      },
+        ),
+        Expanded(child: _buildSubPageContent()),
+      ],
+    );
+  }
+
+  Widget _buildSubPageContent() {
+    switch (_subPage) {
+      case 1:
+        return _TimerSettingsContent();
+      case 2:
+        return _FeedbackSettingsContent();
+      case 3:
+        return _AppearanceSettingsContent();
+      case 4:
+        return _backupSubPage == 1
+            ? _WebDavSettingsContent()
+            : _BackupContent(onOpenWebDav: _openWebDavSubPage);
+      default:
+        return const SizedBox.shrink();
+    }
+  }
+}
+
+class _SettingsSubPageScaffold extends StatelessWidget {
+  const _SettingsSubPageScaffold({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    final bottom = MediaQuery.viewInsetsOf(context).bottom;
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 720),
+        child: ListView.separated(
+          padding: EdgeInsets.fromLTRB(20, 2, 20, 32 + bottom),
+          itemBuilder: (context, index) => children[index],
+          separatorBuilder: (context, index) => const SizedBox(height: 14),
+          itemCount: children.length,
+        ),
+      ),
     );
   }
 }
 
-class _BackupPage extends StatelessWidget {
-  const _BackupPage({required this.controller, required this.settings});
+class _SettingsSection extends StatelessWidget {
+  const _SettingsSection({
+    required this.icon,
+    required this.title,
+    required this.children,
+  });
 
-  final AppController controller;
-  final AppSettings settings;
+  final IconData icon;
+  final String title;
+  final List<Widget> children;
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 8, 18, 4),
+              child: Row(
+                children: [
+                  Icon(icon, color: scheme.primary, size: 20),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 2),
+            for (var index = 0; index < children.length; index++) ...[
+              if (index > 0) const Divider(height: 1, indent: 58),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                child: children[index],
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BackupContent extends StatelessWidget {
+  const _BackupContent({required this.onOpenWebDav});
+
+  final VoidCallback onOpenWebDav;
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = AppScope.watch(context);
+    final settings = controller.data.settings;
     final scheme = Theme.of(context).colorScheme;
     final lastSyncAt = controller.lastSyncAt;
     final status = controller.syncing
@@ -1114,157 +1548,128 @@ class _BackupPage extends StatelessWidget {
         ? scheme.onSurfaceVariant
         : scheme.error;
 
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 720),
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 24, 20, 112),
-          children: [
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(18),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+    return _SettingsSubPageScaffold(
+      children: [
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
                   children: [
-                    Row(
-                      children: [
-                        Icon(Icons.cloud_done_outlined, color: scheme.primary),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            '备份',
-                            style: Theme.of(context).textTheme.titleLarge,
-                          ),
-                        ),
-                        if (controller.syncing)
-                          const SizedBox.square(
-                            dimension: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      status,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: controller.lastSyncError == null
-                            ? scheme.onSurfaceVariant
-                            : scheme.error,
+                    Icon(Icons.cloud_done_outlined, color: scheme.primary),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        '云端同步',
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w600),
                       ),
                     ),
-                    const SizedBox(height: 10),
-                    Text(
-                      backupStatus,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: backupStatusColor,
+                    if (controller.syncing)
+                      const SizedBox.square(
+                        dimension: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
                       ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  status,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: controller.lastSyncError == null
+                        ? scheme.onSurfaceVariant
+                        : scheme.error,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  backupStatus,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(color: backupStatusColor),
+                ),
+                const SizedBox(height: 16),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: [
+                    FilledButton.icon(
+                      onPressed:
+                          settings.webDav.isConfigured && !controller.syncing
+                          ? controller.syncNow
+                          : null,
+                      icon: const Icon(Icons.sync),
+                      label: const Text('立即同步'),
                     ),
-                    const SizedBox(height: 16),
-                    Wrap(
-                      spacing: 12,
-                      runSpacing: 12,
-                      children: [
-                        FilledButton.icon(
-                          onPressed:
-                              settings.webDav.isConfigured &&
-                                  !controller.syncing
-                              ? controller.syncNow
-                              : null,
-                          icon: const Icon(Icons.sync),
-                          label: const Text('立即同步'),
-                        ),
-                        OutlinedButton.icon(
-                          onPressed: controller.syncing
-                              ? null
-                              : () => _openWebDavSettings(context),
-                          icon: const Icon(Icons.settings_backup_restore),
-                          label: const Text('WebDAV 设置'),
-                        ),
-                      ],
+                    OutlinedButton.icon(
+                      onPressed: controller.syncing ? null : onOpenWebDav,
+                      icon: const Icon(Icons.settings_backup_restore),
+                      label: const Text('WebDAV 设置'),
                     ),
                   ],
                 ),
-              ),
+              ],
             ),
-            const SizedBox(height: 16),
-            _LocalBackupCard(controller: controller, settings: settings),
-            const SizedBox(height: 16),
-            Card(
-              child: Column(
-                children: [
-                  SwitchListTile(
-                    secondary: const Icon(Icons.autorenew),
-                    title: const Text('自动同步'),
-                    subtitle: Text(
-                      settings.webDav.isConfigured
-                          ? '应用存活或画中画运行时每 ${settings.backupAutoSyncIntervalMinutes} 分钟同步一次'
-                          : '配置 WebDAV 后启用',
-                    ),
-                    value: settings.backupAutoSyncEnabled,
-                    onChanged: (value) {
-                      controller.updateSettings(
-                        settings.copyWith(backupAutoSyncEnabled: value),
-                      );
-                    },
-                  ),
-                  const Divider(height: 1, indent: 56),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    child: NumberStepper(
-                      icon: Icons.schedule,
-                      label: '同步间隔',
-                      value: settings.backupAutoSyncIntervalMinutes,
-                      min: 5,
-                      max: 1440,
-                      step: 5,
-                      suffix: '分钟',
-                      onChanged: (value) {
-                        controller.updateSettings(
-                          settings.copyWith(
-                            backupAutoSyncIntervalMinutes: value,
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ],
+          ),
+        ),
+        _LocalBackupCard(controller: controller, settings: settings),
+        _SettingsSection(
+          icon: Icons.autorenew,
+          title: '自动同步',
+          children: [
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              secondary: const Icon(Icons.autorenew),
+              title: const Text('自动同步'),
+              subtitle: Text(
+                settings.webDav.isConfigured
+                    ? '每 ${settings.backupAutoSyncIntervalMinutes} 分钟自动同步'
+                    : '配置 WebDAV 后启用',
               ),
+              value: settings.backupAutoSyncEnabled,
+              onChanged: (value) {
+                controller.updateSettings(
+                  settings.copyWith(backupAutoSyncEnabled: value),
+                );
+              },
             ),
-            const SizedBox(height: 16),
-            Card(
-              child: ListTile(
-                leading: Icon(
-                  settings.webDav.isConfigured
-                      ? Icons.cloud_done_outlined
-                      : Icons.cloud_off_outlined,
-                ),
-                title: const Text('WebDAV'),
-                subtitle: Text(
-                  settings.webDav.isConfigured
-                      ? settings.webDav.remotePath
-                      : '未配置远端备份',
-                ),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => _openWebDavSettings(context),
-              ),
+            NumberStepper(
+              icon: Icons.schedule,
+              label: '同步间隔',
+              value: settings.backupAutoSyncIntervalMinutes,
+              min: 5,
+              max: 1440,
+              suffix: '分钟',
+              onChanged: (value) {
+                controller.updateSettings(
+                  settings.copyWith(backupAutoSyncIntervalMinutes: value),
+                );
+              },
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  void _openWebDavSettings(BuildContext context) {
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (_) => const _WebDavSettingsSheet(),
+        Card(
+          child: ListTile(
+            leading: Icon(
+              settings.webDav.isConfigured
+                  ? Icons.cloud_done_outlined
+                  : Icons.cloud_off_outlined,
+            ),
+            title: const Text('WebDAV'),
+            subtitle: Text(
+              settings.webDav.isConfigured
+                  ? settings.webDav.remotePath
+                  : '未配置远端备份',
+            ),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: onOpenWebDav,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -1334,6 +1739,14 @@ class _LocalBackupCardState extends State<_LocalBackupCard> {
     await widget.controller.createLocalBackup(directory: directory);
   }
 
+  Future<void> _pickDirectory() async {
+    final path = await PlatformControls.pickDirectory();
+    if (path != null && mounted) {
+      _directoryController.text = path;
+      await _saveDirectory();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Card(
@@ -1363,17 +1776,29 @@ class _LocalBackupCardState extends State<_LocalBackupCard> {
               ],
             ),
             const SizedBox(height: 14),
-            TextField(
-              controller: _directoryController,
-              focusNode: _focusNode,
-              decoration: const InputDecoration(
-                labelText: '备份目录',
-                hintText: '留空使用应用数据目录',
-                prefixIcon: Icon(Icons.folder_outlined),
-                border: OutlineInputBorder(),
-              ),
-              textInputAction: TextInputAction.done,
-              onSubmitted: (_) => unawaited(_saveDirectory()),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _directoryController,
+                    focusNode: _focusNode,
+                    decoration: const InputDecoration(
+                      labelText: '备份目录',
+                      hintText: '留空使用应用数据目录',
+                      prefixIcon: Icon(Icons.folder_outlined),
+                      border: OutlineInputBorder(),
+                    ),
+                    textInputAction: TextInputAction.done,
+                    onSubmitted: (_) => unawaited(_saveDirectory()),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton.filled(
+                  onPressed: _pickDirectory,
+                  icon: const Icon(Icons.folder_open, size: 20),
+                  tooltip: '选择文件夹',
+                ),
+              ],
             ),
           ],
         ),
@@ -1505,8 +1930,6 @@ class _HitokotoLineState extends State<_HitokotoLine> {
                 overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.titleMedium?.copyWith(
                   color: scheme.onSurfaceVariant,
-                  fontFamily: _wenKaiFontFamily,
-                  fontFamilyFallback: _wenKaiFontFallback,
                   fontWeight: FontWeight.w500,
                   height: 1.35,
                   letterSpacing: 0,
@@ -2115,9 +2538,10 @@ class _StatCard extends StatelessWidget {
 }
 
 class _RecentSessions extends StatelessWidget {
-  const _RecentSessions({required this.sessions});
+  const _RecentSessions({required this.sessions, this.onTap});
 
   final List<FocusSession> sessions;
+  final ValueChanged<FocusSession>? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -2139,200 +2563,203 @@ class _RecentSessions extends StatelessWidget {
                 '${formatHours(session.focusedSeconds)} · ${session.completed ? '完成' : '已停止'}',
               ),
               trailing: const Icon(Icons.chevron_right),
+              onTap: onTap != null ? () => onTap!(session) : null,
             ),
       ],
     );
   }
 }
 
-class _TimerSettingsSheet extends StatelessWidget {
-  const _TimerSettingsSheet();
+class _TimerSettingsContent extends StatelessWidget {
+  const _TimerSettingsContent();
 
   @override
   Widget build(BuildContext context) {
-    final controller = AppScope.watch(context);
+    final controller = AppScope.read(context);
     final settings = controller.data.settings;
-    final bottom = MediaQuery.viewInsetsOf(context).bottom;
 
-    return SafeArea(
-      child: ListView(
-        padding: EdgeInsets.fromLTRB(20, 0, 20, 20 + bottom),
-        shrinkWrap: true,
-        children: [
-          Text('计时设置', style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 16),
-          NumberStepper(
-            icon: Icons.psychology_alt_outlined,
-            label: '专注时长',
-            value: settings.focusMinutes,
-            min: 1,
-            max: 240,
-            step: 5,
-            suffix: '分钟',
-            onChanged: (value) {
-              controller.updateSettings(settings.copyWith(focusMinutes: value));
-            },
-          ),
-          NumberStepper(
-            icon: Icons.coffee_outlined,
-            label: '短休息',
-            value: settings.shortBreakMinutes,
-            min: 1,
-            max: 120,
-            step: 5,
-            suffix: '分钟',
-            onChanged: (value) {
-              controller.updateSettings(
-                settings.copyWith(shortBreakMinutes: value),
-              );
-            },
-          ),
-          NumberStepper(
-            icon: Icons.weekend_outlined,
-            label: '长休息',
-            value: settings.longBreakMinutes,
-            min: 1,
-            max: 240,
-            step: 5,
-            suffix: '分钟',
-            onChanged: (value) {
-              controller.updateSettings(
-                settings.copyWith(longBreakMinutes: value),
-              );
-            },
-          ),
-          NumberStepper(
-            icon: Icons.repeat,
-            label: '长休间隔',
-            value: settings.roundsBeforeLongBreak,
-            min: 1,
-            max: 12,
-            suffix: '轮',
-            onChanged: (value) {
-              controller.updateSettings(
-                settings.copyWith(roundsBeforeLongBreak: value),
-              );
-            },
-          ),
-          NumberStepper(
-            icon: Icons.visibility_off_outlined,
-            label: '静默显示',
-            value: settings.idleFocusSeconds,
-            min: 5,
-            max: 600,
-            suffix: '秒',
-            onChanged: (value) {
-              controller.updateSettings(
-                settings.copyWith(idleFocusSeconds: value),
-              );
-            },
-          ),
-          const Divider(height: 28),
-        ],
-      ),
+    return _SettingsSubPageScaffold(
+      children: [
+        _SettingsSection(
+          icon: Icons.tune,
+          title: '阶段时长',
+          children: [
+            NumberStepper(
+              icon: Icons.psychology_alt_outlined,
+              label: '专注时长',
+              value: settings.focusMinutes,
+              min: 1,
+              max: 240,
+              suffix: '分钟',
+              onChanged: (value) {
+                controller.updateSettings(
+                  settings.copyWith(focusMinutes: value),
+                );
+              },
+            ),
+            NumberStepper(
+              icon: Icons.coffee_outlined,
+              label: '短休息',
+              value: settings.shortBreakMinutes,
+              min: 1,
+              max: 120,
+              suffix: '分钟',
+              onChanged: (value) {
+                controller.updateSettings(
+                  settings.copyWith(shortBreakMinutes: value),
+                );
+              },
+            ),
+            NumberStepper(
+              icon: Icons.weekend_outlined,
+              label: '长休息',
+              value: settings.longBreakMinutes,
+              min: 1,
+              max: 240,
+              suffix: '分钟',
+              onChanged: (value) {
+                controller.updateSettings(
+                  settings.copyWith(longBreakMinutes: value),
+                );
+              },
+            ),
+          ],
+        ),
+        _SettingsSection(
+          icon: Icons.repeat,
+          title: '循环与显示',
+          children: [
+            NumberStepper(
+              icon: Icons.repeat,
+              label: '长休间隔',
+              value: settings.roundsBeforeLongBreak,
+              min: 1,
+              max: 12,
+              suffix: '轮',
+              onChanged: (value) {
+                controller.updateSettings(
+                  settings.copyWith(roundsBeforeLongBreak: value),
+                );
+              },
+            ),
+            NumberStepper(
+              icon: Icons.visibility_off_outlined,
+              label: '静默显示',
+              value: settings.idleFocusSeconds,
+              min: 5,
+              max: 600,
+              suffix: '秒',
+              onChanged: (value) {
+                controller.updateSettings(
+                  settings.copyWith(idleFocusSeconds: value),
+                );
+              },
+            ),
+          ],
+        ),
+      ],
     );
   }
 }
 
-class _FeedbackSettingsSheet extends StatelessWidget {
-  const _FeedbackSettingsSheet();
+class _FeedbackSettingsContent extends StatelessWidget {
+  const _FeedbackSettingsContent();
 
   @override
   Widget build(BuildContext context) {
-    final controller = AppScope.watch(context);
+    final controller = AppScope.read(context);
     final settings = controller.data.settings;
 
-    return SafeArea(
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-        shrinkWrap: true,
-        children: [
-          Text('切换提醒', style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 12),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            secondary: const Icon(Icons.vibration),
-            title: const Text('切换震动'),
-            subtitle: const Text('专注和休息阶段切换时使用手机震动提醒'),
-            value: settings.completionHapticsEnabled,
-            onChanged: (value) {
-              controller.updateSettings(
-                settings.copyWith(completionHapticsEnabled: value),
-              );
-            },
-          ),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            secondary: const Icon(Icons.notifications_active_outlined),
-            title: const Text('切换音效'),
-            subtitle: const Text('默认关闭，避免打扰；需要时可手动开启'),
-            value: settings.completionSoundEnabled,
-            onChanged: (value) {
-              controller.updateSettings(
-                settings.copyWith(completionSoundEnabled: value),
-              );
-            },
-          ),
-        ],
-      ),
+    return _SettingsSubPageScaffold(
+      children: [
+        _SettingsSection(
+          icon: Icons.notifications_active_outlined,
+          title: '阶段切换',
+          children: [
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              secondary: const Icon(Icons.vibration),
+              title: const Text('切换震动'),
+              subtitle: const Text('进入休息时使用长振动，其余切换使用强提醒'),
+              value: settings.completionHapticsEnabled,
+              onChanged: (value) {
+                controller.updateSettings(
+                  settings.copyWith(completionHapticsEnabled: value),
+                );
+              },
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              secondary: const Icon(Icons.notifications_active_outlined),
+              title: const Text('切换音效'),
+              subtitle: const Text('默认关闭，避免打扰；需要时可手动开启'),
+              value: settings.completionSoundEnabled,
+              onChanged: (value) {
+                controller.updateSettings(
+                  settings.copyWith(completionSoundEnabled: value),
+                );
+              },
+            ),
+          ],
+        ),
+      ],
     );
   }
 }
 
-class _AppearanceSettingsSheet extends StatelessWidget {
-  const _AppearanceSettingsSheet();
+class _AppearanceSettingsContent extends StatelessWidget {
+  const _AppearanceSettingsContent();
 
   @override
   Widget build(BuildContext context) {
-    final controller = AppScope.watch(context);
+    final controller = AppScope.read(context);
     final settings = controller.data.settings;
 
-    return SafeArea(
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-        shrinkWrap: true,
-        children: [
-          Text('外观', style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 16),
-          SegmentedButton<AppThemeMode>(
-            showSelectedIcon: false,
-            segments: AppThemeMode.values
-                .map(
-                  (mode) => ButtonSegment<AppThemeMode>(
-                    value: mode,
-                    icon: Icon(_themeModeIcon(mode)),
-                    label: Text(mode.label),
-                  ),
-                )
-                .toList(),
-            selected: {settings.themeMode},
-            onSelectionChanged: (values) {
-              controller.updateSettings(
-                settings.copyWith(themeMode: values.single),
-              );
-            },
-          ),
-          const SizedBox(height: 12),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: Icon(_themeModeIcon(settings.themeMode)),
-            title: Text(settings.themeMode.label),
-            subtitle: const Text('跟随系统会使用手机当前的浅色或深色设置'),
-          ),
-        ],
-      ),
+    return _SettingsSubPageScaffold(
+      children: [
+        _SettingsSection(
+          icon: Icons.palette_outlined,
+          title: '主题',
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(6, 10, 6, 12),
+              child: SizedBox(
+                width: double.infinity,
+                child: SegmentedButton<AppThemeMode>(
+                  showSelectedIcon: false,
+                  segments: AppThemeMode.values
+                      .map(
+                        (mode) => ButtonSegment<AppThemeMode>(
+                          value: mode,
+                          icon: Icon(_themeModeIcon(mode)),
+                          label: Text(mode.label),
+                        ),
+                      )
+                      .toList(),
+                  selected: {settings.themeMode},
+                  onSelectionChanged: (values) {
+                    controller.updateSettings(
+                      settings.copyWith(themeMode: values.single),
+                    );
+                  },
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }
 
-class _WebDavSettingsSheet extends StatefulWidget {
-  const _WebDavSettingsSheet();
+class _WebDavSettingsContent extends StatefulWidget {
+  const _WebDavSettingsContent();
 
   @override
-  State<_WebDavSettingsSheet> createState() => _WebDavSettingsSheetState();
+  State<_WebDavSettingsContent> createState() => _WebDavSettingsContentState();
 }
 
-class _WebDavSettingsSheetState extends State<_WebDavSettingsSheet> {
+class _WebDavSettingsContentState extends State<_WebDavSettingsContent> {
   late final TextEditingController _endpointController;
   late final TextEditingController _usernameController;
   late final TextEditingController _passwordController;
@@ -2359,80 +2786,92 @@ class _WebDavSettingsSheetState extends State<_WebDavSettingsSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final controller = AppScope.watch(context);
+    final controller = AppScope.read(context);
     final settings = controller.data.settings;
-    final bottom = MediaQuery.viewInsetsOf(context).bottom;
 
-    return SafeArea(
-      child: ListView(
-        padding: EdgeInsets.fromLTRB(20, 0, 20, 20 + bottom),
-        shrinkWrap: true,
-        children: [
-          Text('WebDAV 备份', style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _endpointController,
-            decoration: const InputDecoration(
-              prefixIcon: Icon(Icons.link),
-              labelText: '服务地址',
-              border: OutlineInputBorder(),
-            ),
-            keyboardType: TextInputType.url,
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _usernameController,
-            decoration: const InputDecoration(
-              prefixIcon: Icon(Icons.person_outline),
-              labelText: '用户名',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _passwordController,
-            decoration: const InputDecoration(
-              prefixIcon: Icon(Icons.key_outlined),
-              labelText: '密码',
-              border: OutlineInputBorder(),
-            ),
-            obscureText: true,
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _remotePathController,
-            decoration: const InputDecoration(
-              prefixIcon: Icon(Icons.folder_outlined),
-              labelText: '远端路径',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 14),
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: [
-              FilledButton.icon(
-                onPressed: _saveWebDav,
-                icon: const Icon(Icons.save_outlined),
-                label: const Text('保存备份设置'),
+    return _SettingsSubPageScaffold(
+      children: [
+        _SettingsSection(
+          icon: Icons.cloud_outlined,
+          title: '连接信息',
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(6, 8, 6, 6),
+              child: TextField(
+                controller: _endpointController,
+                decoration: const InputDecoration(
+                  prefixIcon: Icon(Icons.link),
+                  labelText: '服务地址',
+                  border: OutlineInputBorder(),
+                ),
+                keyboardType: TextInputType.url,
               ),
-              OutlinedButton.icon(
-                onPressed: settings.webDav.isConfigured && !controller.syncing
-                    ? controller.syncNow
-                    : null,
-                icon: controller.syncing
-                    ? const SizedBox.square(
-                        dimension: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.sync),
-                label: const Text('同步'),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(6, 8, 6, 6),
+              child: TextField(
+                controller: _usernameController,
+                decoration: const InputDecoration(
+                  prefixIcon: Icon(Icons.person_outline),
+                  labelText: '用户名',
+                  border: OutlineInputBorder(),
+                ),
               ),
-            ],
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(6, 8, 6, 6),
+              child: TextField(
+                controller: _passwordController,
+                decoration: const InputDecoration(
+                  prefixIcon: Icon(Icons.key_outlined),
+                  labelText: '密码',
+                  border: OutlineInputBorder(),
+                ),
+                obscureText: true,
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(6, 8, 6, 10),
+              child: TextField(
+                controller: _remotePathController,
+                decoration: const InputDecoration(
+                  prefixIcon: Icon(Icons.folder_outlined),
+                  labelText: '远端路径',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ),
+          ],
+        ),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                FilledButton.icon(
+                  onPressed: _saveWebDav,
+                  icon: const Icon(Icons.save_outlined),
+                  label: const Text('保存备份设置'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: settings.webDav.isConfigured && !controller.syncing
+                      ? controller.syncNow
+                      : null,
+                  icon: controller.syncing
+                      ? const SizedBox.square(
+                          dimension: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.sync),
+                  label: const Text('同步'),
+                ),
+              ],
+            ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -2460,7 +2899,6 @@ class NumberStepper extends StatefulWidget {
     required this.max,
     required this.suffix,
     required this.onChanged,
-    this.step = 1,
     super.key,
   });
 
@@ -2469,7 +2907,6 @@ class NumberStepper extends StatefulWidget {
   final int value;
   final int min;
   final int max;
-  final int step;
   final String suffix;
   final ValueChanged<int> onChanged;
 
@@ -2480,6 +2917,8 @@ class NumberStepper extends StatefulWidget {
 class _NumberStepperState extends State<NumberStepper> {
   late final TextEditingController _controller;
   late final FocusNode _focusNode;
+  Timer? _feedbackTimer;
+  bool _savedVisible = false;
 
   @override
   void initState() {
@@ -2498,6 +2937,7 @@ class _NumberStepperState extends State<NumberStepper> {
 
   @override
   void dispose() {
+    _feedbackTimer?.cancel();
     _focusNode
       ..removeListener(_handleFocusChanged)
       ..dispose();
@@ -2507,78 +2947,183 @@ class _NumberStepperState extends State<NumberStepper> {
 
   void _handleFocusChanged() {
     if (!_focusNode.hasFocus) {
-      _commitInput();
+      _commitInput(showFeedback: true);
     }
   }
 
-  void _commitInput() {
+  void _commitInput({bool showFeedback = false, bool unfocus = false}) {
     final parsed = int.tryParse(_controller.text);
     if (parsed == null) {
       _controller.text = widget.value.toString();
+      if (showFeedback) {
+        _showInputMessage('请输入 ${widget.min}-${widget.max} 的数字');
+      }
+      if (unfocus) {
+        _focusNode.unfocus();
+      }
       return;
     }
-    final next = parsed.clamp(widget.min, widget.max);
+    final next = parsed.clamp(widget.min, widget.max).toInt();
     _controller.text = next.toString();
     if (next != widget.value) {
       widget.onChanged(next);
     }
+    if (showFeedback) {
+      _showSavedFeedback();
+      if (parsed != next) {
+        _showInputMessage('已调整到 $next ${widget.suffix}');
+      }
+    }
+    if (unfocus) {
+      _focusNode.unfocus();
+    }
   }
 
-  void _stepBy(int delta) {
-    final next = (widget.value + delta).clamp(widget.min, widget.max);
+  void _changeBy(int delta) {
+    final parsed = int.tryParse(_controller.text) ?? widget.value;
+    final next = (parsed + delta).clamp(widget.min, widget.max).toInt();
+    _controller.text = next.toString();
     if (next != widget.value) {
       widget.onChanged(next);
     }
+    _focusNode.unfocus();
+    _showSavedFeedback();
+  }
+
+  void _showSavedFeedback() {
+    unawaited(HapticFeedback.selectionClick());
+    _feedbackTimer?.cancel();
+    if (mounted) {
+      setState(() {
+        _savedVisible = true;
+      });
+    }
+    _feedbackTimer = Timer(const Duration(milliseconds: 1200), () {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _savedVisible = false;
+      });
+    });
+  }
+
+  void _showInputMessage(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          duration: const Duration(milliseconds: 1200),
+        ),
+      );
   }
 
   @override
   Widget build(BuildContext context) {
-    final canDecrease = widget.value - widget.step >= widget.min;
-    final canIncrease = widget.value + widget.step <= widget.max;
+    final canDecrease = widget.value > widget.min;
+    final canIncrease = widget.value < widget.max;
     return ListTile(
       contentPadding: EdgeInsets.zero,
       leading: Icon(widget.icon),
       title: Text(widget.label),
-      trailing: SizedBox(
-        width: 216,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: [
-            IconButton(
-              tooltip: '减少',
-              onPressed: canDecrease ? () => _stepBy(-widget.step) : null,
-              icon: const Icon(Icons.remove_circle_outline),
-            ),
-            SizedBox(
-              width: 70,
-              child: TextField(
-                controller: _controller,
-                focusNode: _focusNode,
-                textAlign: TextAlign.center,
-                keyboardType: TextInputType.number,
-                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                decoration: const InputDecoration(
-                  isDense: true,
-                  contentPadding: EdgeInsets.symmetric(
-                    horizontal: 6,
-                    vertical: 8,
-                  ),
-                  border: OutlineInputBorder(),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _StepperIconButton(
+            icon: Icons.remove,
+            tooltip: '减少',
+            onPressed: canDecrease ? () => _changeBy(-1) : null,
+          ),
+          const SizedBox(width: 3),
+          SizedBox(
+            width: 54,
+            child: TextField(
+              controller: _controller,
+              focusNode: _focusNode,
+              textAlign: TextAlign.center,
+              keyboardType: TextInputType.number,
+              textInputAction: TextInputAction.done,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              decoration: const InputDecoration(
+                isDense: true,
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: 4,
+                  vertical: 8,
                 ),
-                onSubmitted: (_) => _commitInput(),
+                border: OutlineInputBorder(),
               ),
+              onTap: () => _controller.selection = TextSelection(
+                baseOffset: 0,
+                extentOffset: _controller.text.length,
+              ),
+              onSubmitted: (_) =>
+                  _commitInput(showFeedback: true, unfocus: true),
             ),
-            const SizedBox(width: 6),
-            SizedBox(
-              width: 34,
-              child: Text(widget.suffix, textAlign: TextAlign.start),
+          ),
+          const SizedBox(width: 4),
+          Text(
+            widget.suffix,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          const SizedBox(width: 4),
+          _StepperIconButton(
+            icon: Icons.add,
+            tooltip: '增加',
+            onPressed: canIncrease ? () => _changeBy(1) : null,
+          ),
+          const SizedBox(width: 2),
+          AnimatedOpacity(
+            opacity: _savedVisible ? 1 : 0,
+            duration: const Duration(milliseconds: 140),
+            child: Icon(
+              Icons.check_circle,
+              size: 16,
+              color: Theme.of(context).colorScheme.primary,
             ),
-            IconButton(
-              tooltip: '增加',
-              onPressed: canIncrease ? () => _stepBy(widget.step) : null,
-              icon: const Icon(Icons.add_circle_outline),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StepperIconButton extends StatelessWidget {
+  const _StepperIconButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final enabled = onPressed != null;
+    final foreground = enabled
+        ? scheme.onSurfaceVariant
+        : scheme.onSurface.withAlpha(70);
+    return Tooltip(
+      message: tooltip,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onPressed,
+        child: SizedBox.square(
+          dimension: 26,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: enabled
+                  ? scheme.surfaceContainerHighest.withAlpha(130)
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(999),
             ),
-          ],
+            child: Icon(icon, size: 18, color: foreground),
+          ),
         ),
       ),
     );
