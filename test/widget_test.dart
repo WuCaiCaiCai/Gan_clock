@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tomato_clock/app_controller.dart';
 import 'package:tomato_clock/completion_feedback.dart';
+import 'package:tomato_clock/heatmap.dart';
 import 'package:tomato_clock/main.dart';
 import 'package:tomato_clock/models.dart';
 import 'package:tomato_clock/storage.dart';
@@ -84,15 +85,17 @@ void main() {
 
     await tester.tap(find.text('外观'));
     await tester.pumpAndSettle();
-    expect(find.text('夜间模式'), findsOneWidget);
-    await tester.tap(find.byType(SwitchListTile).last);
+    expect(find.text('跟随系统'), findsWidgets);
+    expect(find.text('浅色'), findsWidgets);
+    expect(find.text('夜间'), findsWidgets);
+    await tester.tap(find.text('夜间').last);
     await tester.pumpAndSettle();
-    expect(controller.data.settings.darkModeEnabled, isTrue);
+    expect(controller.data.settings.themeMode, AppThemeMode.dark);
     expect(
       tester.widget<MaterialApp>(find.byType(MaterialApp)).themeMode,
       ThemeMode.dark,
     );
-    Navigator.of(tester.element(find.text('夜间模式'))).pop();
+    Navigator.of(tester.element(find.text('跟随系统').last)).pop();
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('切换提醒'));
@@ -139,5 +142,30 @@ void main() {
     expect(find.text('统计'), findsOneWidget);
 
     controller.dispose();
+  });
+
+  testWidgets('heatmap selects a day and shows its focus duration', (
+    WidgetTester tester,
+  ) async {
+    await usePhoneSurface(tester);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: FocusHeatmap(
+            now: DateTime(2026, 1, 2),
+            focusSecondsByDay: const {'2026-01-01': 120},
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('2026-01-02 · 专注 0 分钟'), findsOneWidget);
+
+    await tester.tap(find.text('1'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('2026-01-01 · 专注 2 分钟'), findsOneWidget);
   });
 }

@@ -45,9 +45,6 @@ class _TomatoAppState extends State<TomatoApp> {
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, _) {
-        final themeMode = _controller.data.settings.darkModeEnabled
-            ? ThemeMode.dark
-            : ThemeMode.light;
         return AppScope(
           controller: _controller,
           child: MaterialApp(
@@ -55,7 +52,7 @@ class _TomatoAppState extends State<TomatoApp> {
             debugShowCheckedModeBanner: false,
             theme: _buildAppTheme(Brightness.light),
             darkTheme: _buildAppTheme(Brightness.dark),
-            themeMode: themeMode,
+            themeMode: _flutterThemeMode(_controller.data.settings.themeMode),
             home: const TomatoHomePage(),
           ),
         );
@@ -87,6 +84,17 @@ ThemeData _buildAppTheme(Brightness brightness) {
       backgroundColor: dark ? const Color(0xFF1C1A18) : Colors.white,
     ),
   );
+}
+
+ThemeMode _flutterThemeMode(AppThemeMode mode) {
+  switch (mode) {
+    case AppThemeMode.system:
+      return ThemeMode.system;
+    case AppThemeMode.light:
+      return ThemeMode.light;
+    case AppThemeMode.dark:
+      return ThemeMode.dark;
+  }
 }
 
 class AppScope extends InheritedNotifier<AppController> {
@@ -402,15 +410,9 @@ class _SettingsPage extends StatelessWidget {
                   ),
                   const Divider(height: 1, indent: 56),
                   ListTile(
-                    leading: Icon(
-                      settings.darkModeEnabled
-                          ? Icons.dark_mode
-                          : Icons.dark_mode_outlined,
-                    ),
+                    leading: Icon(_themeModeIcon(settings.themeMode)),
                     title: const Text('外观'),
-                    subtitle: Text(
-                      settings.darkModeEnabled ? '夜间模式开启' : '夜间模式关闭',
-                    ),
+                    subtitle: Text(settings.themeMode.label),
                     trailing: const Icon(Icons.chevron_right),
                     onTap: () => _openAppearanceSettings(context),
                   ),
@@ -1122,22 +1124,31 @@ class _AppearanceSettingsSheet extends StatelessWidget {
         shrinkWrap: true,
         children: [
           Text('外观', style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 12),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            secondary: Icon(
-              settings.darkModeEnabled
-                  ? Icons.dark_mode
-                  : Icons.dark_mode_outlined,
-            ),
-            title: const Text('夜间模式'),
-            subtitle: const Text('使用深色背景和低亮度界面，适合夜间专注'),
-            value: settings.darkModeEnabled,
-            onChanged: (value) {
+          const SizedBox(height: 16),
+          SegmentedButton<AppThemeMode>(
+            showSelectedIcon: false,
+            segments: AppThemeMode.values
+                .map(
+                  (mode) => ButtonSegment<AppThemeMode>(
+                    value: mode,
+                    icon: Icon(_themeModeIcon(mode)),
+                    label: Text(mode.label),
+                  ),
+                )
+                .toList(),
+            selected: {settings.themeMode},
+            onSelectionChanged: (values) {
               controller.updateSettings(
-                settings.copyWith(darkModeEnabled: value),
+                settings.copyWith(themeMode: values.single),
               );
             },
+          ),
+          const SizedBox(height: 12),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(_themeModeIcon(settings.themeMode)),
+            title: Text(settings.themeMode.label),
+            subtitle: const Text('跟随系统会使用手机当前的浅色或深色设置'),
           ),
         ],
       ),
@@ -1387,5 +1398,16 @@ Color _modeColor(TimerMode mode) {
       return const Color(0xFF2F855A);
     case TimerMode.longBreak:
       return const Color(0xFF3B6E8F);
+  }
+}
+
+IconData _themeModeIcon(AppThemeMode mode) {
+  switch (mode) {
+    case AppThemeMode.system:
+      return Icons.brightness_auto_outlined;
+    case AppThemeMode.light:
+      return Icons.light_mode_outlined;
+    case AppThemeMode.dark:
+      return Icons.dark_mode_outlined;
   }
 }

@@ -11,11 +11,15 @@ void main() {
     expect(settings.completionSoundEnabled, isFalse);
     expect(settings.completionHapticsEnabled, isTrue);
     expect(settings.idleFocusSeconds, 30);
-    expect(settings.darkModeEnabled, isFalse);
+    expect(settings.themeMode, AppThemeMode.system);
     expect(AppSettings.fromJson(const {}).completionSoundEnabled, isFalse);
     expect(AppSettings.fromJson(const {}).completionHapticsEnabled, isTrue);
     expect(AppSettings.fromJson(const {}).idleFocusSeconds, 30);
-    expect(AppSettings.fromJson(const {}).darkModeEnabled, isFalse);
+    expect(AppSettings.fromJson(const {}).themeMode, AppThemeMode.system);
+    expect(
+      AppSettings.fromJson(const {'darkModeEnabled': true}).themeMode,
+      AppThemeMode.dark,
+    );
   });
 
   test('completes focus session and advances to short break', () {
@@ -138,7 +142,7 @@ void main() {
   test('settings serialize completion feedback switches', () {
     final settings = const AppSettings(
       idleFocusSeconds: 75,
-      darkModeEnabled: true,
+      themeMode: AppThemeMode.dark,
       completionSoundEnabled: false,
       completionHapticsEnabled: false,
     );
@@ -146,7 +150,7 @@ void main() {
     final decoded = AppSettings.fromJson(settings.toJson());
 
     expect(decoded.idleFocusSeconds, 75);
-    expect(decoded.darkModeEnabled, isTrue);
+    expect(decoded.themeMode, AppThemeMode.dark);
     expect(decoded.completionSoundEnabled, isFalse);
     expect(decoded.completionHapticsEnabled, isFalse);
   });

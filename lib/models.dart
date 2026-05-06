@@ -6,6 +6,8 @@ enum TimerPhase { idle, running, paused }
 
 enum HeatmapScope { month, year }
 
+enum AppThemeMode { system, light, dark }
+
 String dateKey(DateTime value) {
   final local = value.toLocal();
   return '${local.year.toString().padLeft(4, '0')}-'
@@ -25,6 +27,18 @@ TimerPhase timerPhaseFromJson(Object? value) {
     (phase) => phase.name == value,
     orElse: () => TimerPhase.idle,
   );
+}
+
+AppThemeMode appThemeModeFromJson(Object? value, {bool? legacyDarkMode}) {
+  for (final mode in AppThemeMode.values) {
+    if (mode.name == value) {
+      return mode;
+    }
+  }
+  if (legacyDarkMode != null) {
+    return legacyDarkMode ? AppThemeMode.dark : AppThemeMode.light;
+  }
+  return AppThemeMode.system;
 }
 
 extension TimerModeLabels on TimerMode {
@@ -47,6 +61,19 @@ extension TimerModeLabels on TimerMode {
         return settings.shortBreakMinutes * 60;
       case TimerMode.longBreak:
         return settings.longBreakMinutes * 60;
+    }
+  }
+}
+
+extension AppThemeModeLabels on AppThemeMode {
+  String get label {
+    switch (this) {
+      case AppThemeMode.system:
+        return '跟随系统';
+      case AppThemeMode.light:
+        return '浅色';
+      case AppThemeMode.dark:
+        return '夜间';
     }
   }
 }
@@ -109,7 +136,7 @@ class AppSettings {
     this.longBreakMinutes = 15,
     this.roundsBeforeLongBreak = 4,
     this.idleFocusSeconds = 30,
-    this.darkModeEnabled = false,
+    this.themeMode = AppThemeMode.system,
     this.completionSoundEnabled = false,
     this.completionHapticsEnabled = true,
     this.webDav = const WebDavSettings(),
@@ -120,7 +147,7 @@ class AppSettings {
   final int longBreakMinutes;
   final int roundsBeforeLongBreak;
   final int idleFocusSeconds;
-  final bool darkModeEnabled;
+  final AppThemeMode themeMode;
   final bool completionSoundEnabled;
   final bool completionHapticsEnabled;
   final WebDavSettings webDav;
@@ -131,7 +158,7 @@ class AppSettings {
     int? longBreakMinutes,
     int? roundsBeforeLongBreak,
     int? idleFocusSeconds,
-    bool? darkModeEnabled,
+    AppThemeMode? themeMode,
     bool? completionSoundEnabled,
     bool? completionHapticsEnabled,
     WebDavSettings? webDav,
@@ -143,7 +170,7 @@ class AppSettings {
       roundsBeforeLongBreak:
           roundsBeforeLongBreak ?? this.roundsBeforeLongBreak,
       idleFocusSeconds: idleFocusSeconds ?? this.idleFocusSeconds,
-      darkModeEnabled: darkModeEnabled ?? this.darkModeEnabled,
+      themeMode: themeMode ?? this.themeMode,
       completionSoundEnabled:
           completionSoundEnabled ?? this.completionSoundEnabled,
       completionHapticsEnabled:
@@ -159,7 +186,7 @@ class AppSettings {
       'longBreakMinutes': longBreakMinutes,
       'roundsBeforeLongBreak': roundsBeforeLongBreak,
       'idleFocusSeconds': idleFocusSeconds,
-      'darkModeEnabled': darkModeEnabled,
+      'themeMode': themeMode.name,
       'completionSoundEnabled': completionSoundEnabled,
       'completionHapticsEnabled': completionHapticsEnabled,
       'webDav': webDav.toJson(),
@@ -181,7 +208,10 @@ class AppSettings {
         4,
       ),
       idleFocusSeconds: _boundedInt(value['idleFocusSeconds'], 5, 600, 30),
-      darkModeEnabled: value['darkModeEnabled'] as bool? ?? false,
+      themeMode: appThemeModeFromJson(
+        value['themeMode'],
+        legacyDarkMode: value['darkModeEnabled'] as bool?,
+      ),
       completionSoundEnabled: value['completionSoundEnabled'] as bool? ?? false,
       completionHapticsEnabled:
           value['completionHapticsEnabled'] as bool? ?? true,

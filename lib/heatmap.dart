@@ -16,14 +16,23 @@ class FocusHeatmap extends StatefulWidget {
 
 class _FocusHeatmapState extends State<FocusHeatmap> {
   HeatmapScope _scope = HeatmapScope.month;
+  DateTime? _selectedDate;
 
   @override
   Widget build(BuildContext context) {
     final now = widget.now ?? DateTime.now();
+    final selectedDate =
+        _selectedDate ?? DateTime(now.year, now.month, now.day);
     final cells = _scope == HeatmapScope.month
         ? _monthCells(now, widget.focusSecondsByDay)
         : _yearCells(now, widget.focusSecondsByDay);
     final activeCells = cells.where((cell) => cell.inScope).toList();
+    final selectedCell =
+        _selectedCell(activeCells, selectedDate) ??
+        activeCells.firstWhere(
+          (cell) => cell.date != null,
+          orElse: () => const _HeatmapCell(),
+        );
     final activeDays = activeCells.where((cell) => cell.seconds > 0).length;
     final totalSeconds = activeCells.fold<int>(
       0,
@@ -77,9 +86,21 @@ class _FocusHeatmapState extends State<FocusHeatmap> {
               ),
               const SizedBox(height: 14),
               _scope == HeatmapScope.month
-                  ? _MonthHeatmap(cells: cells)
-                  : _YearHeatmap(cells: cells),
+                  ? _MonthHeatmap(
+                      cells: cells,
+                      selectedDate: selectedCell.date,
+                      onSelected: _selectDate,
+                    )
+                  : _YearHeatmap(
+                      cells: cells,
+                      selectedDate: selectedCell.date,
+                      onSelected: _selectDate,
+                    ),
               const SizedBox(height: 12),
+              if (selectedCell.inScope) ...[
+                _SelectedDaySummary(cell: selectedCell),
+                const SizedBox(height: 12),
+              ],
               const _HeatmapLegend(),
             ],
           ),
@@ -87,12 +108,24 @@ class _FocusHeatmapState extends State<FocusHeatmap> {
       ),
     );
   }
+
+  void _selectDate(DateTime date) {
+    setState(() {
+      _selectedDate = DateTime(date.year, date.month, date.day);
+    });
+  }
 }
 
 class _MonthHeatmap extends StatelessWidget {
-  const _MonthHeatmap({required this.cells});
+  const _MonthHeatmap({
+    required this.cells,
+    required this.selectedDate,
+    required this.onSelected,
+  });
 
   final List<_HeatmapCell> cells;
+  final DateTime? selectedDate;
+  final ValueChanged<DateTime> onSelected;
 
   @override
   Widget build(BuildContext context) {
@@ -123,7 +156,12 @@ class _MonthHeatmap extends StatelessWidget {
                 crossAxisSpacing: gap,
               ),
               itemBuilder: (context, index) {
-                return _HeatmapTile(cell: cells[index], compact: false);
+                return _HeatmapTile(
+                  cell: cells[index],
+                  compact: false,
+                  selected: _isSameDay(cells[index].date, selectedDate),
+                  onSelected: onSelected,
+                );
               },
             ),
           ),
@@ -134,9 +172,15 @@ class _MonthHeatmap extends StatelessWidget {
 }
 
 class _YearHeatmap extends StatelessWidget {
-  const _YearHeatmap({required this.cells});
+  const _YearHeatmap({
+    required this.cells,
+    required this.selectedDate,
+    required this.onSelected,
+  });
 
   final List<_HeatmapCell> cells;
+  final DateTime? selectedDate;
+  final ValueChanged<DateTime> onSelected;
 
   @override
   Widget build(BuildContext context) {
@@ -170,7 +214,12 @@ class _YearHeatmap extends StatelessWidget {
             crossAxisSpacing: gap,
           ),
           itemBuilder: (context, index) {
-            return _HeatmapTile(cell: rowMajorCells[index], compact: true);
+            return _HeatmapTile(
+              cell: rowMajorCells[index],
+              compact: true,
+              selected: _isSameDay(rowMajorCells[index].date, selectedDate),
+              onSelected: onSelected,
+            );
           },
         ),
       ),
@@ -179,21 +228,30 @@ class _YearHeatmap extends StatelessWidget {
 }
 
 class _HeatmapTile extends StatelessWidget {
-  const _HeatmapTile({required this.cell, required this.compact});
+  const _HeatmapTile({
+    required this.cell,
+    required this.compact,
+    required this.selected,
+    required this.onSelected,
+  });
 
   final _HeatmapCell cell;
   final bool compact;
+  final bool selected;
+  final ValueChanged<DateTime> onSelected;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final radius = BorderRadius.circular(compact ? 3 : 5);
     final color = cell.inScope
         ? _heatColor(context, cell.seconds)
         : const Color(0x00FFFFFF);
     final child = DecoratedBox(
       decoration: BoxDecoration(
         color: color,
-        borderRadius: BorderRadius.circular(compact ? 3 : 5),
+        borderRadius: radius,
+        border: selected ? Border.all(color: scheme.secondary, width: 2) : null,
       ),
       child: compact || !cell.inScope
           ? const SizedBox.expand()
@@ -213,7 +271,47 @@ class _HeatmapTile extends StatelessWidget {
     }
     return Tooltip(
       message: '${dateKey(cell.date!)} ${_formatDuration(cell.seconds)}',
-      child: child,
+      child: InkWell(
+        borderRadius: radius,
+        onTap: () => onSelected(cell.date!),
+        child: child,
+      ),
+    );
+  }
+}
+
+class _SelectedDaySummary extends StatelessWidget {
+  const _SelectedDaySummary({required this.cell});
+
+  final _HeatmapCell cell;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 180),
+      child: DecoratedBox(
+        key: ValueKey(dateKey(cell.date!)),
+        decoration: BoxDecoration(
+          color: scheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Row(
+            children: [
+              Icon(Icons.event_note_outlined, size: 18, color: scheme.primary),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '${_formatDate(cell.date!)} · 专注 ${_formatDuration(cell.seconds)}',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -314,6 +412,23 @@ _HeatmapCell _cellFor(DateTime date, Map<String, int> values) {
   return _HeatmapCell(date: date, seconds: values[dateKey(date)] ?? 0);
 }
 
+_HeatmapCell? _selectedCell(List<_HeatmapCell> cells, DateTime selectedDate) {
+  for (final cell in cells) {
+    if (_isSameDay(cell.date, selectedDate)) {
+      return cell;
+    }
+  }
+  return null;
+}
+
+bool _isSameDay(DateTime? left, DateTime? right) {
+  return left != null &&
+      right != null &&
+      left.year == right.year &&
+      left.month == right.month &&
+      left.day == right.day;
+}
+
 Color _heatColor(BuildContext context, int seconds) {
   final scheme = Theme.of(context).colorScheme;
   if (seconds <= 0) {
@@ -334,6 +449,12 @@ String _scopeLabel(DateTime now, HeatmapScope scope) {
     case HeatmapScope.year:
       return '${now.year}';
   }
+}
+
+String _formatDate(DateTime value) {
+  return '${value.year}-'
+      '${value.month.toString().padLeft(2, '0')}-'
+      '${value.day.toString().padLeft(2, '0')}';
 }
 
 String _formatDuration(int seconds) {
