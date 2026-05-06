@@ -46,6 +46,7 @@ class AppStorage implements TomatoStore {
     TomatoData data, {
     DateTime? at,
     String? directoryPath,
+    int keepCount = 0,
   }) async {
     final configured = directoryPath?.trim();
     final backupDirectory = configured != null && configured.isNotEmpty
@@ -66,7 +67,33 @@ class AppStorage implements TomatoStore {
       suffix += 1;
     }
     await file.writeAsString(data.toPrettyJson(), flush: true);
+
+    if (keepCount > 0) {
+      await _pruneBackups(backupDirectory, keepCount);
+    }
+
     return file.path;
+  }
+
+  Future<void> _pruneBackups(Directory dir, int keepCount) async {
+    try {
+      final files = await dir
+          .list()
+          .where(
+            (e) =>
+                e is File &&
+                e.path.contains('gan_backup_') &&
+                e.path.endsWith('.json'),
+          )
+          .cast<File>()
+          .toList();
+      files.sort((a, b) => b.path.compareTo(a.path));
+      for (final old in files.skip(keepCount)) {
+        await old.delete();
+      }
+    } on Object {
+      // ignore cleanup errors
+    }
   }
 
   Future<File> _file() async {

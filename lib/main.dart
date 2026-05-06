@@ -215,6 +215,10 @@ class _TomatoHomePageState extends State<TomatoHomePage>
       onPictureInPictureChanged: _handlePictureInPictureChanged,
       onKeepScreenOnChanged: _handlePlatformKeepScreenOnChanged,
     );
+    // Warm up the platform channel so the first dock tap has no latency.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(HapticFeedback.selectionClick());
+    });
   }
 
   @override
@@ -877,26 +881,18 @@ class _DockItem extends StatefulWidget {
 class _DockItemState extends State<_DockItem> {
   bool _pressed = false;
 
-  void _setPressed(bool value) {
-    if (_pressed == value || widget.selected) {
-      return;
-    }
-    setState(() {
-      _pressed = value;
-    });
-  }
-
   void _handleTapDown(TapDownDetails details) {
-    _setPressed(true);
+    if (widget.selected) return;
+    if (!_pressed) setState(() => _pressed = true);
     widget.onTap();
   }
 
   void _handleTapUp(TapUpDetails details) {
-    _setPressed(false);
+    if (_pressed) setState(() => _pressed = false);
   }
 
   void _handleTapCancel() {
-    _setPressed(false);
+    if (_pressed) setState(() => _pressed = false);
   }
 
   @override
@@ -1408,32 +1404,36 @@ class _SettingsPageState extends State<_SettingsPage> {
 
   Widget _buildSubPage() {
     final title = _backupSubPage == 1 ? 'WebDAV 备份' : _pages[_subPage];
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 12, 20, 10),
-          child: Row(
-            children: [
-              IconButton(
-                icon: const Icon(Icons.arrow_back, size: 22),
-                tooltip: '返回',
-                onPressed: _goBack,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  title,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600),
-                  overflow: TextOverflow.ellipsis,
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onTap: () => FocusScope.of(context).unfocus(),
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 20, 10),
+            child: Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.arrow_back, size: 22),
+                  tooltip: '返回',
+                  onPressed: _goBack,
                 ),
-              ),
-            ],
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: Theme.of(
+                      context,
+                    ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
-        Expanded(child: _buildSubPageContent()),
-      ],
+          Expanded(child: _buildSubPageContent()),
+        ],
+      ),
     );
   }
 
@@ -1749,6 +1749,7 @@ class _LocalBackupCardState extends State<_LocalBackupCard> {
 
   @override
   Widget build(BuildContext context) {
+    final settings = widget.settings;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(18),
@@ -1771,7 +1772,7 @@ class _LocalBackupCardState extends State<_LocalBackupCard> {
                 FilledButton.icon(
                   onPressed: _createBackup,
                   icon: const Icon(Icons.save_alt_outlined),
-                  label: const Text('备份'),
+                  label: const Text('立即备份'),
                 ),
               ],
             ),
@@ -1800,6 +1801,52 @@ class _LocalBackupCardState extends State<_LocalBackupCard> {
                 ),
               ],
             ),
+            const SizedBox(height: 6),
+            const Divider(height: 24),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              secondary: const Icon(Icons.autorenew),
+              title: const Text('定时自动备份'),
+              subtitle: settings.localBackupAutoEnabled
+                  ? Text('每 ${settings.localBackupAutoIntervalMinutes} 分钟备份一次')
+                  : const Text('关闭后仅手动备份'),
+              value: settings.localBackupAutoEnabled,
+              onChanged: (value) {
+                widget.controller.updateSettings(
+                  settings.copyWith(localBackupAutoEnabled: value),
+                );
+              },
+            ),
+            if (settings.localBackupAutoEnabled) ...[
+              NumberStepper(
+                icon: Icons.schedule,
+                label: '备份间隔',
+                value: settings.localBackupAutoIntervalMinutes,
+                min: 5,
+                max: 1440,
+                suffix: '分钟',
+                onChanged: (value) {
+                  widget.controller.updateSettings(
+                    settings.copyWith(
+                      localBackupAutoIntervalMinutes: value,
+                    ),
+                  );
+                },
+              ),
+              NumberStepper(
+                icon: Icons.layers_outlined,
+                label: '保留份数',
+                value: settings.localBackupKeepCount,
+                min: 1,
+                max: 50,
+                suffix: '份',
+                onChanged: (value) {
+                  widget.controller.updateSettings(
+                    settings.copyWith(localBackupKeepCount: value),
+                  );
+                },
+              ),
+            ],
           ],
         ),
       ),
@@ -2979,32 +3026,13 @@ class _NumberStepperState extends State<NumberStepper> {
     }
   }
 
-  void _changeBy(int delta) {
-    final parsed = int.tryParse(_controller.text) ?? widget.value;
-    final next = (parsed + delta).clamp(widget.min, widget.max).toInt();
-    _controller.text = next.toString();
-    if (next != widget.value) {
-      widget.onChanged(next);
-    }
-    _focusNode.unfocus();
-    _showSavedFeedback();
-  }
 
   void _showSavedFeedback() {
     unawaited(HapticFeedback.selectionClick());
     _feedbackTimer?.cancel();
-    if (mounted) {
-      setState(() {
-        _savedVisible = true;
-      });
-    }
-    _feedbackTimer = Timer(const Duration(milliseconds: 1200), () {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _savedVisible = false;
-      });
+    if (mounted) setState(() => _savedVisible = true);
+    _feedbackTimer = Timer(const Duration(milliseconds: 1400), () {
+      if (mounted) setState(() => _savedVisible = false);
     });
   }
 
@@ -3014,15 +3042,14 @@ class _NumberStepperState extends State<NumberStepper> {
       ..showSnackBar(
         SnackBar(
           content: Text(message),
-          duration: const Duration(milliseconds: 1200),
+          duration: const Duration(milliseconds: 1400),
         ),
       );
   }
 
   @override
   Widget build(BuildContext context) {
-    final canDecrease = widget.value > widget.min;
-    final canIncrease = widget.value < widget.max;
+    final scheme = Theme.of(context).colorScheme;
     return ListTile(
       contentPadding: EdgeInsets.zero,
       leading: Icon(widget.icon),
@@ -3030,14 +3057,8 @@ class _NumberStepperState extends State<NumberStepper> {
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _StepperIconButton(
-            icon: Icons.remove,
-            tooltip: '减少',
-            onPressed: canDecrease ? () => _changeBy(-1) : null,
-          ),
-          const SizedBox(width: 3),
           SizedBox(
-            width: 54,
+            width: 62,
             child: TextField(
               controller: _controller,
               focusNode: _focusNode,
@@ -3045,86 +3066,35 @@ class _NumberStepperState extends State<NumberStepper> {
               keyboardType: TextInputType.number,
               textInputAction: TextInputAction.done,
               inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 isDense: true,
-                contentPadding: EdgeInsets.symmetric(
-                  horizontal: 4,
-                  vertical: 8,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 6,
+                  vertical: 9,
                 ),
-                border: OutlineInputBorder(),
+                border: const OutlineInputBorder(),
+                hintText: '${widget.min}–${widget.max}',
+                hintStyle: TextStyle(
+                  fontSize: 11,
+                  color: scheme.onSurfaceVariant.withAlpha(120),
+                ),
               ),
               onTap: () => _controller.selection = TextSelection(
                 baseOffset: 0,
                 extentOffset: _controller.text.length,
               ),
-              onSubmitted: (_) =>
-                  _commitInput(showFeedback: true, unfocus: true),
+              onSubmitted: (_) => _commitInput(showFeedback: true, unfocus: true),
             ),
           ),
+          const SizedBox(width: 6),
+          Text(widget.suffix, style: Theme.of(context).textTheme.bodyMedium),
           const SizedBox(width: 4),
-          Text(
-            widget.suffix,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-          const SizedBox(width: 4),
-          _StepperIconButton(
-            icon: Icons.add,
-            tooltip: '增加',
-            onPressed: canIncrease ? () => _changeBy(1) : null,
-          ),
-          const SizedBox(width: 2),
           AnimatedOpacity(
-            opacity: _savedVisible ? 1 : 0,
-            duration: const Duration(milliseconds: 140),
-            child: Icon(
-              Icons.check_circle,
-              size: 16,
-              color: Theme.of(context).colorScheme.primary,
-            ),
+            opacity: _savedVisible ? 1.0 : 0.0,
+            duration: const Duration(milliseconds: 160),
+            child: Icon(Icons.check_circle, size: 16, color: scheme.primary),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _StepperIconButton extends StatelessWidget {
-  const _StepperIconButton({
-    required this.icon,
-    required this.tooltip,
-    required this.onPressed,
-  });
-
-  final IconData icon;
-  final String tooltip;
-  final VoidCallback? onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final enabled = onPressed != null;
-    final foreground = enabled
-        ? scheme.onSurfaceVariant
-        : scheme.onSurface.withAlpha(70);
-    return Tooltip(
-      message: tooltip,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onPressed,
-        child: SizedBox.square(
-          dimension: 26,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: enabled
-                  ? scheme.surfaceContainerHighest.withAlpha(130)
-                  : Colors.transparent,
-              borderRadius: BorderRadius.circular(999),
-            ),
-            child: Icon(icon, size: 18, color: foreground),
-          ),
-        ),
       ),
     );
   }

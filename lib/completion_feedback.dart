@@ -16,9 +16,10 @@ class SystemCompletionFeedback implements CompletionFeedback {
     if (!settings.completionHapticsEnabled) {
       return;
     }
+    // 短促双击：告知计时已开始
     await PlatformControls.vibratePattern(
-      timingsMs: const [0, 80, 60, 160],
-      amplitudes: const [0, 180, 0, 220],
+      timingsMs: const [0, 120, 80, 220],
+      amplitudes: const [0, 200, 0, 255],
     );
   }
 
@@ -27,19 +28,19 @@ class SystemCompletionFeedback implements CompletionFeedback {
     final futures = <Future<void>>[];
     if (settings.completionHapticsEnabled) {
       if (completedMode == TimerMode.focus) {
-        // 专注结束 → 进入休息：长振动
+        // 专注结束 → 进入休息：持续长振动，让人放松下来
         futures.add(
           PlatformControls.vibratePattern(
-            timingsMs: const [0, 900, 180, 600],
-            amplitudes: const [0, 255, 0, 200],
+            timingsMs: const [0, 1200, 200, 800],
+            amplitudes: const [0, 255, 0, 220],
           ),
         );
       } else {
-        // 休息结束 → 回到专注：强提醒
+        // 休息结束 → 回到专注：强节奏三段振动，把注意力拉回来
         futures.add(
           PlatformControls.vibratePattern(
-            timingsMs: const [0, 520, 120, 520, 120, 760],
-            amplitudes: const [0, 235, 0, 235, 0, 255],
+            timingsMs: const [0, 600, 140, 600, 140, 900],
+            amplitudes: const [0, 235, 0, 245, 0, 255],
           ),
         );
       }

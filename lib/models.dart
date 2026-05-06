@@ -143,6 +143,9 @@ class AppSettings {
     this.backupAutoSyncEnabled = true,
     this.backupAutoSyncIntervalMinutes = 30,
     this.localBackupDirectory = '',
+    this.localBackupAutoEnabled = false,
+    this.localBackupAutoIntervalMinutes = 60,
+    this.localBackupKeepCount = 5,
     this.webDav = const WebDavSettings(),
   });
 
@@ -158,6 +161,9 @@ class AppSettings {
   final bool backupAutoSyncEnabled;
   final int backupAutoSyncIntervalMinutes;
   final String localBackupDirectory;
+  final bool localBackupAutoEnabled;
+  final int localBackupAutoIntervalMinutes;
+  final int localBackupKeepCount;
   final WebDavSettings webDav;
 
   AppSettings copyWith({
@@ -173,6 +179,9 @@ class AppSettings {
     bool? backupAutoSyncEnabled,
     int? backupAutoSyncIntervalMinutes,
     String? localBackupDirectory,
+    bool? localBackupAutoEnabled,
+    int? localBackupAutoIntervalMinutes,
+    int? localBackupKeepCount,
     WebDavSettings? webDav,
   }) {
     return AppSettings(
@@ -193,6 +202,11 @@ class AppSettings {
       backupAutoSyncIntervalMinutes:
           backupAutoSyncIntervalMinutes ?? this.backupAutoSyncIntervalMinutes,
       localBackupDirectory: localBackupDirectory ?? this.localBackupDirectory,
+      localBackupAutoEnabled:
+          localBackupAutoEnabled ?? this.localBackupAutoEnabled,
+      localBackupAutoIntervalMinutes:
+          localBackupAutoIntervalMinutes ?? this.localBackupAutoIntervalMinutes,
+      localBackupKeepCount: localBackupKeepCount ?? this.localBackupKeepCount,
       webDav: webDav ?? this.webDav,
     );
   }
@@ -211,6 +225,9 @@ class AppSettings {
       'backupAutoSyncEnabled': backupAutoSyncEnabled,
       'backupAutoSyncIntervalMinutes': backupAutoSyncIntervalMinutes,
       'localBackupDirectory': localBackupDirectory,
+      'localBackupAutoEnabled': localBackupAutoEnabled,
+      'localBackupAutoIntervalMinutes': localBackupAutoIntervalMinutes,
+      'localBackupKeepCount': localBackupKeepCount,
       'webDav': webDav.toJson(),
     };
   }
@@ -246,6 +263,20 @@ class AppSettings {
         30,
       ),
       localBackupDirectory: value['localBackupDirectory'] as String? ?? '',
+      localBackupAutoEnabled:
+          value['localBackupAutoEnabled'] as bool? ?? false,
+      localBackupAutoIntervalMinutes: _boundedInt(
+        value['localBackupAutoIntervalMinutes'],
+        5,
+        1440,
+        60,
+      ),
+      localBackupKeepCount: _boundedInt(
+        value['localBackupKeepCount'],
+        1,
+        50,
+        5,
+      ),
       webDav: WebDavSettings.fromJson(value['webDav']),
     );
   }

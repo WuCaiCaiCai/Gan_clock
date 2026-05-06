@@ -28,6 +28,7 @@ class AppController extends ChangeNotifier {
   TomatoData _data = TomatoData.initial();
   Timer? _ticker;
   Timer? _autoSyncTimer;
+  Timer? _localBackupTimer;
   DateTime? _lastAutoSyncAttemptAt;
   DateTime? _lastSyncAt;
   String? _lastSyncError;
@@ -79,6 +80,7 @@ class AppController extends ChangeNotifier {
       _loading = false;
       _restartTicker();
       _restartAutoSyncTimer();
+      _restartLocalBackupTimer();
       _notify();
     }
   }
@@ -127,15 +129,30 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> createLocalBackup({String? directory}) async {
+    await _runLocalBackup(
+      directory: directory,
+      keepCount: _data.settings.localBackupKeepCount,
+    );
+  }
+
+  Future<void> _runLocalBackup({
+    String? directory,
+    int keepCount = 0,
+  }) async {
     try {
       await _storage.save(_data);
       final storage = _storage;
       final directoryPath = directory ?? _data.settings.localBackupDirectory;
       final path = storage is AppStorage
-          ? await storage.createLocalBackup(_data, directoryPath: directoryPath)
+          ? await storage.createLocalBackup(
+              _data,
+              directoryPath: directoryPath,
+              keepCount: keepCount,
+            )
           : await AppStorage().createLocalBackup(
               _data,
               directoryPath: directoryPath,
+              keepCount: keepCount,
             );
       _lastLocalBackupAt = DateTime.now();
       _lastLocalBackupPath = path;
@@ -225,6 +242,7 @@ class AppController extends ChangeNotifier {
     _data = next;
     _restartTicker();
     _restartAutoSyncTimer();
+    _restartLocalBackupTimer();
     _notify();
     await _storage.save(_data);
   }
@@ -247,6 +265,24 @@ class AppController extends ChangeNotifier {
     _autoSyncTimer = Timer.periodic(
       Duration(minutes: settings.backupAutoSyncIntervalMinutes),
       (_) => unawaited(_autoSyncIfDue(force: true)),
+    );
+  }
+
+  void _restartLocalBackupTimer() {
+    _localBackupTimer?.cancel();
+    _localBackupTimer = null;
+    final settings = _data.settings;
+    if (!settings.localBackupAutoEnabled) {
+      return;
+    }
+    _localBackupTimer = Timer.periodic(
+      Duration(minutes: settings.localBackupAutoIntervalMinutes),
+      (_) => unawaited(
+        _runLocalBackup(
+          directory: settings.localBackupDirectory,
+          keepCount: settings.localBackupKeepCount,
+        ),
+      ),
     );
   }
 
@@ -278,6 +314,7 @@ class AppController extends ChangeNotifier {
     _disposed = true;
     _ticker?.cancel();
     _autoSyncTimer?.cancel();
+    _localBackupTimer?.cancel();
     super.dispose();
   }
 }
