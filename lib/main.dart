@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import 'app_controller.dart';
 import 'heatmap.dart';
+import 'hitokoto_service.dart';
 import 'models.dart';
 import 'platform_controls.dart';
 
@@ -1182,7 +1183,7 @@ class _BackupPage extends StatelessWidget {
   }
 }
 
-class _HitokotoLine extends StatelessWidget {
+class _HitokotoLine extends StatefulWidget {
   const _HitokotoLine({required this.mode});
 
   final TimerMode mode;
@@ -1208,23 +1209,74 @@ class _HitokotoLine extends StatelessWidget {
     ],
   };
 
-  @override
-  Widget build(BuildContext context) {
+  static String fallbackFor(TimerMode mode, {DateTime? at}) {
     final messages = _lines[mode]!;
-    final now = DateTime.now();
+    final now = at ?? DateTime.now();
     final day = DateTime(now.year, now.month, now.day);
     final dayIndex = day.difference(DateTime(now.year)).inDays;
-    final message = messages[(dayIndex + mode.index * 2) % messages.length];
+    return messages[(dayIndex + mode.index * 2) % messages.length];
+  }
+
+  @override
+  State<_HitokotoLine> createState() => _HitokotoLineState();
+}
+
+class _HitokotoLineState extends State<_HitokotoLine> {
+  static const _service = HitokotoService();
+  static HitokotoQuote? _cachedQuote;
+  static Future<HitokotoQuote?>? _pendingQuote;
+
+  HitokotoQuote? _quote;
+
+  @override
+  void initState() {
+    super.initState();
+    _quote = _cachedQuote;
+    _loadQuote();
+  }
+
+  @override
+  void didUpdateWidget(covariant _HitokotoLine oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_quote == null && _cachedQuote != null) {
+      _quote = _cachedQuote;
+    }
+  }
+
+  void _loadQuote() {
+    if (_cachedQuote != null) {
+      return;
+    }
+    final pending = _pendingQuote ??= _service.fetch();
+    unawaited(
+      pending.then((quote) {
+        if (quote == null) {
+          return;
+        }
+        _cachedQuote = quote;
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _quote = quote;
+        });
+      }),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final message = _quote?.text ?? _HitokotoLine.fallbackFor(widget.mode);
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final palette = _modePalette(mode);
+    final palette = _modePalette(widget.mode);
 
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 220),
       switchInCurve: Curves.easeOutCubic,
       switchOutCurve: Curves.easeInCubic,
       child: Container(
-        key: ValueKey('${mode.name}-$message'),
+        key: ValueKey('${widget.mode.name}-$message'),
         constraints: const BoxConstraints(maxWidth: 342),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(

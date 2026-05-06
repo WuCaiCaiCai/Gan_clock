@@ -8,6 +8,7 @@
 
 - 番茄钟循环：专注、短休息、长休息自动衔接。
 - 停止记录：专注超过 1 分钟后停止会计入专注时长，但不算完成番茄。
+- 一言：接入官方一言接口，网络不可用时立即使用本地短句兜底。
 - 沉浸模式：运行中可自动或点击空白区域隐藏操作区，只保留一言和计时圆环。
 - 阶段配色：专注红褐、短休绿色、长休蓝色，背景和圆环同步变化。
 - Android 画中画：后台运行时显示近方形数字小窗。
@@ -69,6 +70,7 @@ Android Studio 真机调试：
 lib/
   app_controller.dart      状态协调、自动同步、持久化
   timer_engine.dart        纯 Dart 计时状态机
+  hitokoto_service.dart    一言接口请求和离线兜底解析
   webdav_service.dart      WebDAV 上传、下载、合并同步
   main.dart                Flutter UI
   models.dart              数据模型和 JSON 序列化
