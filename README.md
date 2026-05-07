@@ -6,6 +6,7 @@
     <img alt="Flutter" src="https://img.shields.io/badge/Flutter-3.x-02569B?logo=flutter&logoColor=white" />
     <img alt="Dart" src="https://img.shields.io/badge/Dart-3.11-0175C2?logo=dart&logoColor=white" />
     <img alt="Android" src="https://img.shields.io/badge/Android-12%2B-3DDC84?logo=android&logoColor=white" />
+    <img alt="Fedora KDE" src="https://img.shields.io/badge/Fedora%20KDE-Linux-51A2DA?logo=fedora&logoColor=white" />
     <img alt="License" src="https://img.shields.io/badge/License-MIT-black" />
   </p>
 </div>
@@ -17,7 +18,7 @@
 - 打开即用的专注计时主界面
 - 清晰的统计与热力图反馈
 - 稳定的数据持久化与备份同步
-- 面向 Android 手机的系统能力适配（如 PiP、通知）
+- 面向 Android 与 Linux/Fedora KDE 的系统能力适配（如 PiP、通知）
 
 ## 功能亮点
 
@@ -26,6 +27,7 @@
 - 统计页与 GitHub 风格热力图
 - 本地 JSON 备份 + WebDAV 同步
 - Android 通知、画中画、震动反馈
+- Linux/Fedora KDE 桌面通知与本地同步文件选择
 - 明暗主题与灰色基调界面
 
 ## 快速开始
@@ -51,6 +53,7 @@ flutter run
 ```text
 lib/       Flutter UI、状态管理、计时引擎、同步逻辑
 android/   Android 宿主与系统能力桥接
+linux/     Linux GTK runner 与 KDE/Freedesktop 通知桥接
 test/      单元测试与 Widget 测试
 docs/      项目文档
 ```

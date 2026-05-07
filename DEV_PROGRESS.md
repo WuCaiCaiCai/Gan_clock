@@ -4,15 +4,15 @@
 
 苷是一个偏安静、偏手机使用场景的番茄钟。主流程使用 Flutter + Dart + Material Design 3 实现，重点放在沉浸计时、清晰统计、Android 画中画和可备份的数据记录上。
 
-**当前阶段:** GitHub 开源文档整理，README 首屏重构，开发日志结构清理。
+**当前阶段:** Android 与 Linux/Fedora 平台能力补齐，数据同步和系统通知完善。
 
 ## 当前状态
 
 - 应用名称: 苷
-- 版本号: `0.1.0+1`
-- 主要平台: Android
+- 版本号: `0.1.1+2`
+- 主要平台: Android、Linux/Fedora
 - 发布状态: 暂不发版，先完成开源仓库准备
-- 语言边界: 番茄钟业务逻辑全 Dart；Android Java 只作为 PiP 和屏幕常亮的系统桥接
+- 语言边界: 番茄钟业务逻辑全 Dart；Android Java 和 Linux C++ 只作为系统能力桥接
 - Kotlin 状态: 无 Kotlin 源码，无 Kotlin Gradle DSL
 
 ## 已完成能力
@@ -57,8 +57,16 @@
 - [x] Android 入口为 Java `MainActivity`，保留 FlutterActivity 嵌入。
 - [x] Android 画中画接入完成，运行中回到后台或点击按钮可进入 PiP。
 - [x] 屏幕常亮通过 Android 窗口标记桥接。
+- [x] Android 通知、提示音、震动和系统文件选择通过 MethodChannel 桥接。
 - [x] Android Gradle 脚本使用 Groovy，已移除 Kotlin 插件和 KTS 文件。
 - [x] Android 启动图标由根目录 `icon.svg` 生成自适应 foreground 和各密度 PNG。
+
+### Linux/Fedora 能力
+
+- [x] Linux runner 接入 `tomato_clock/platform` MethodChannel。
+- [x] 计时进度通知通过 `org.freedesktop.Notifications` DBus 接口发送，兼容 Fedora KDE Plasma 通知中心。
+- [x] KDE 通知 hint 包含 `desktop-entry`、`x-kde-origin-name`、`x-kde.timer` 和进度 `value`。
+- [x] Linux 文件选择、同步文件读写和屏幕常亮 inhibition 已接入。
 
 ### 工程与开源
 
@@ -93,7 +101,8 @@
 ### 平台边界
 
 - Dart 层负责计时、记录、统计、设置、同步和 UI。
-- Java 层只负责 Android 系统 API 桥接，包括 PiP 参数、PiP 状态回调和屏幕常亮。
+- Android Java 层只负责系统 API 桥接，包括 PiP、通知、文件选择、震动、提示音和屏幕常亮。
+- Linux C++ runner 只负责 GTK/GIO 系统桥接，包括 Fedora/KDE 通知、文件选择、同步文件读写和屏幕常亮 inhibition。
 - 项目没有 Kotlin，也没有 Kotlin Gradle DSL。
 
 ## 开发日志

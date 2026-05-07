@@ -120,24 +120,24 @@ void main() {
     expect(find.text('计时设置'), findsOneWidget);
     expect(find.text('切换震动'), findsNothing);
 
-    await tester.tap(find.text('备份'));
+    await tester.tap(find.text('同步'));
     await tester.pumpAndSettle();
-    expect(find.text('本地备份'), findsOneWidget);
-    expect(find.text('备份目录'), findsOneWidget);
+    expect(find.text('本地同步'), findsOneWidget);
+    expect(find.text('同步目录'), findsOneWidget);
     expect(find.text('立即同步'), findsOneWidget);
-    expect(find.text('自动同步'), findsWidgets);
+    expect(find.text('自动同步'), findsOneWidget);
     expect(find.text('WebDAV 设置'), findsOneWidget);
     expect(find.text('WebDAV'), findsNothing);
 
     await tester.tap(find.text('WebDAV 设置'));
     await tester.pumpAndSettle();
-    expect(find.text('WebDAV 备份'), findsOneWidget);
+    expect(find.text('WebDAV 同步'), findsOneWidget);
     expect(find.text('服务地址'), findsOneWidget);
 
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
-    expect(find.text('备份'), findsWidgets);
-    expect(find.text('本地备份'), findsOneWidget);
+    expect(find.text('同步'), findsWidgets);
+    expect(find.text('本地同步'), findsOneWidget);
     expect(find.text('服务地址'), findsNothing);
 
     controller.dispose();
@@ -146,22 +146,31 @@ void main() {
   testWidgets('number stepper accepts integer input', (
     WidgetTester tester,
   ) async {
+    final controller = AppController(
+      storage: MemoryStore(TomatoData.initial()),
+      completionFeedback: const NoopCompletionFeedback(),
+    );
+    addTearDown(controller.dispose);
+
     var minutes = 25;
     await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: StatefulBuilder(
-            builder: (context, setState) {
-              return NumberStepper(
-                icon: Icons.timer_outlined,
-                label: '专注时长',
-                value: minutes,
-                min: 1,
-                max: 240,
-                suffix: '分钟',
-                onChanged: (value) => setState(() => minutes = value),
-              );
-            },
+      AppScope(
+        controller: controller,
+        child: MaterialApp(
+          home: Scaffold(
+            body: StatefulBuilder(
+              builder: (context, setState) {
+                return NumberStepper(
+                  icon: Icons.timer_outlined,
+                  label: '专注时长',
+                  value: minutes,
+                  min: 1,
+                  max: 240,
+                  suffix: '分钟',
+                  onChanged: (value) => setState(() => minutes = value),
+                );
+              },
+            ),
           ),
         ),
       ),
@@ -175,20 +184,23 @@ void main() {
 
     var rounds = 4;
     await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: StatefulBuilder(
-            builder: (context, setState) {
-              return NumberStepper(
-                icon: Icons.repeat,
-                label: '长休间隔',
-                value: rounds,
-                min: 1,
-                max: 12,
-                suffix: '轮',
-                onChanged: (value) => setState(() => rounds = value),
-              );
-            },
+      AppScope(
+        controller: controller,
+        child: MaterialApp(
+          home: Scaffold(
+            body: StatefulBuilder(
+              builder: (context, setState) {
+                return NumberStepper(
+                  icon: Icons.repeat,
+                  label: '长休间隔',
+                  value: rounds,
+                  min: 1,
+                  max: 12,
+                  suffix: '轮',
+                  onChanged: (value) => setState(() => rounds = value),
+                );
+              },
+            ),
           ),
         ),
       ),

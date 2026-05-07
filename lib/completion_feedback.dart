@@ -1,5 +1,3 @@
-import 'package:flutter/services.dart';
-
 import 'models.dart';
 import 'platform_controls.dart';
 
@@ -46,7 +44,7 @@ class SystemCompletionFeedback implements CompletionFeedback {
       }
     }
     if (settings.completionSoundEnabled) {
-      futures.add(SystemSound.play(SystemSoundType.alert));
+      futures.add(PlatformControls.playCompletionSound());
     }
     await Future.wait(futures);
   }

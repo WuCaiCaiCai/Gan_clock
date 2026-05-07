@@ -79,9 +79,53 @@ class PlatformControls {
     await _invokeSilently('openNotificationSettings');
   }
 
+  static Future<void> playCompletionSound() async {
+    try {
+      final played =
+          await _channel.invokeMethod<bool>('playCompletionSound') ?? false;
+      if (played) {
+        return;
+      }
+    } on MissingPluginException {
+      // Fall back to Flutter system sound below.
+    } on PlatformException {
+      // Fall back to Flutter system sound below.
+    }
+    try {
+      await SystemSound.play(SystemSoundType.alert);
+    } on Object {
+      // Ignore when platform does not support alert sound.
+    }
+  }
+
   static Future<String?> pickDirectory() async {
     try {
       return await _channel.invokeMethod<String>('pickDirectory');
+    } on MissingPluginException {
+      return null;
+    } on PlatformException {
+      return null;
+    }
+  }
+
+  static Future<String?> pickBackupFile() async {
+    try {
+      return await _channel.invokeMethod<String>('pickBackupFile');
+    } on MissingPluginException {
+      return null;
+    } on PlatformException {
+      return null;
+    }
+  }
+
+  static Future<String?> readTextFile({required String fileUri}) async {
+    if (fileUri.trim().isEmpty) {
+      return null;
+    }
+    try {
+      return await _channel.invokeMethod<String>('readTextFile', {
+        'fileUri': fileUri,
+      });
     } on MissingPluginException {
       return null;
     } on PlatformException {

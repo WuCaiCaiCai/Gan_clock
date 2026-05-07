@@ -97,6 +97,8 @@ double _actionsBottom(BuildContext context) {
 }
 
 const _localBackupSuccessMessageToken = 'LOCAL_BACKUP_SUCCESS';
+const _localRestoreSuccessMessageToken = 'LOCAL_RESTORE_SUCCESS';
+const _cloudRestoreSuccessMessageToken = 'CLOUD_RESTORE_SUCCESS';
 
 ThemeData _buildAppTheme(Brightness brightness) {
   final baseScheme = ColorScheme.fromSeed(
@@ -252,10 +254,6 @@ class _TomatoHomePageState extends State<TomatoHomePage>
       onPictureInPictureChanged: _handlePictureInPictureChanged,
       onKeepScreenOnChanged: _handlePlatformKeepScreenOnChanged,
     );
-    // Warm up the platform channel so the first dock tap has no latency.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      unawaited(HapticFeedback.selectionClick());
-    });
   }
 
   @override
@@ -343,9 +341,9 @@ class _TomatoHomePageState extends State<TomatoHomePage>
           context: context,
           builder: (context) {
             return AlertDialog(
-              title: const Text('本地备份完成'),
+              title: const Text('本地同步完成'),
               content: Text(
-                path.isEmpty ? '本地备份已保存。' : '本地备份已保存到：\n$path',
+                path.isEmpty ? '本地同步文件已保存。' : '本地同步文件已保存到：\n$path',
                 maxLines: 4,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -358,6 +356,30 @@ class _TomatoHomePageState extends State<TomatoHomePage>
             );
           },
         );
+      });
+      return;
+    }
+    if (message == _localRestoreSuccessMessageToken) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) {
+          return;
+        }
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(const SnackBar(content: Text('本地恢复完成，当前数据已替换为同步内容')));
+      });
+      return;
+    }
+    if (message == _cloudRestoreSuccessMessageToken) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) {
+          return;
+        }
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            const SnackBar(content: Text('云端恢复完成，当前数据已替换为远端同步内容')),
+          );
       });
       return;
     }
@@ -522,6 +544,7 @@ class _TomatoHomePageState extends State<TomatoHomePage>
           expandFromPictureInPicture: expandFromPictureInPicture,
           onRequestQuiet: _requestQuiet,
           onTogglePictureInPicture: _togglePictureInPicture,
+          onUiHaptic: _emitUiHaptic,
         );
       case 1:
         return _StatsPage(
@@ -543,6 +566,7 @@ class _TomatoHomePageState extends State<TomatoHomePage>
           expandFromPictureInPicture: expandFromPictureInPicture,
           onRequestQuiet: _requestQuiet,
           onTogglePictureInPicture: _togglePictureInPicture,
+          onUiHaptic: _emitUiHaptic,
         );
     }
   }
@@ -551,7 +575,7 @@ class _TomatoHomePageState extends State<TomatoHomePage>
     if (_selectedIndex == index) {
       return;
     }
-    HapticFeedback.lightImpact();
+    _emitUiHaptic();
     setState(() {
       _selectedIndex = index;
       if (index != 2) {
@@ -857,6 +881,15 @@ class _TomatoHomePageState extends State<TomatoHomePage>
       ),
     );
   }
+
+  Future<void> _emitUiHaptic() async {
+    final controller = _controller;
+    if (controller == null ||
+        !controller.data.settings.completionHapticsEnabled) {
+      return;
+    }
+    await PlatformControls.vibrate(durationMs: 30, amplitude: 150);
+  }
 }
 
 class _TimerPage extends StatelessWidget {
@@ -868,6 +901,7 @@ class _TimerPage extends StatelessWidget {
     required this.expandFromPictureInPicture,
     required this.onRequestQuiet,
     required this.onTogglePictureInPicture,
+    required this.onUiHaptic,
   });
 
   final AppController controller;
@@ -877,6 +911,7 @@ class _TimerPage extends StatelessWidget {
   final bool expandFromPictureInPicture;
   final VoidCallback onRequestQuiet;
   final ValueChanged<bool> onTogglePictureInPicture;
+  final Future<void> Function() onUiHaptic;
 
   @override
   Widget build(BuildContext context) {
@@ -942,6 +977,7 @@ class _TimerPage extends StatelessWidget {
                     phase: timer.phase,
                     keepScreenOn: settings.keepScreenOnEnabled,
                     pictureInPictureEnabled: settings.pictureInPictureEnabled,
+                    hapticsEnabled: settings.completionHapticsEnabled,
                     onToggleKeepScreenOn: () {
                       controller.updateSettings(
                         settings.copyWith(
@@ -950,6 +986,7 @@ class _TimerPage extends StatelessWidget {
                       );
                     },
                     onTogglePictureInPicture: onTogglePictureInPicture,
+                    onUiHaptic: onUiHaptic,
                   ),
                 ),
               ),
@@ -1485,9 +1522,9 @@ class _SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<_SettingsPage> {
   int _subPage = 0;
-  int _backupSubPage = 0; // 0 = backup main, 1 = webdav
+  int _syncSubPage = 0; // 0 = sync main, 1 = webdav
 
-  static const _pages = ['', '计时设置', '切换提醒', '外观', '备份'];
+  static const _pages = ['', '计时设置', '切换提醒', '外观', '同步'];
 
   @override
   void dispose() {
@@ -1511,7 +1548,7 @@ class _SettingsPageState extends State<_SettingsPage> {
           return FadeTransition(opacity: animation, child: child);
         },
         child: KeyedSubtree(
-          key: ValueKey('settings-$_subPage-$_backupSubPage'),
+          key: ValueKey('settings-$_subPage-$_syncSubPage'),
           child: _subPage == 0 ? _buildMain() : _buildSubPage(),
         ),
       ),
@@ -1519,14 +1556,14 @@ class _SettingsPageState extends State<_SettingsPage> {
   }
 
   void _goBack() {
-    if (_subPage == 4 && _backupSubPage == 1) {
-      setState(() => _backupSubPage = 0);
+    if (_subPage == 4 && _syncSubPage == 1) {
+      setState(() => _syncSubPage = 0);
       return;
     }
     if (_subPage != 0) {
       _setPageState(() {
         _subPage = 0;
-        _backupSubPage = 0;
+        _syncSubPage = 0;
       });
     }
   }
@@ -1534,14 +1571,14 @@ class _SettingsPageState extends State<_SettingsPage> {
   void _openSubPage(int page) {
     _setPageState(() {
       _subPage = page;
-      _backupSubPage = 0;
+      _syncSubPage = 0;
     });
   }
 
   void _openWebDavSubPage() {
     _setPageState(() {
       _subPage = 4;
-      _backupSubPage = 1;
+      _syncSubPage = 1;
     });
   }
 
@@ -1559,46 +1596,50 @@ class _SettingsPageState extends State<_SettingsPage> {
     final settings = controller.data.settings;
     return Center(
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 720),
+        constraints: const BoxConstraints(maxWidth: 760),
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 24, 20, 112),
           children: [
-            Card(
-              child: Column(
-                children: [
-                  ListTile(
-                    leading: const Icon(Icons.tune),
-                    title: const Text('计时设置'),
-                    subtitle: const Text('时长、循环和静默显示'),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => _openSubPage(1),
-                  ),
-                  const Divider(height: 1, indent: 56),
-                  ListTile(
-                    leading: Icon(_themeModeIcon(settings.themeMode)),
-                    title: const Text('外观'),
-                    subtitle: Text(settings.themeMode.label),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => _openSubPage(3),
-                  ),
-                  const Divider(height: 1, indent: 56),
-                  ListTile(
-                    leading: const Icon(Icons.vibration),
-                    title: const Text('切换提醒'),
-                    subtitle: const Text('震动和音效'),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => _openSubPage(2),
-                  ),
-                  const Divider(height: 1, indent: 56),
-                  ListTile(
-                    leading: const Icon(Icons.backup_outlined),
-                    title: const Text('备份'),
-                    subtitle: const Text('本地和 WebDAV'),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => _openSubPage(4),
-                  ),
-                ],
-              ),
+            _SettingsSection(
+              icon: Icons.dashboard_customize_outlined,
+              title: '基础设置',
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.tune),
+                  title: const Text('计时设置'),
+                  subtitle: const Text('时长、循环和静默显示'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => _openSubPage(1),
+                ),
+                ListTile(
+                  leading: Icon(_themeModeIcon(settings.themeMode)),
+                  title: const Text('外观'),
+                  subtitle: Text(settings.themeMode.label),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => _openSubPage(3),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.vibration),
+                  title: const Text('切换提醒'),
+                  subtitle: const Text('震动和音效'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => _openSubPage(2),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            _SettingsSection(
+              icon: Icons.sync_alt,
+              title: '数据同步',
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.sync),
+                  title: const Text('同步'),
+                  subtitle: const Text('本地同步与 WebDAV 云端同步'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => _openSubPage(4),
+                ),
+              ],
             ),
           ],
         ),
@@ -1607,7 +1648,7 @@ class _SettingsPageState extends State<_SettingsPage> {
   }
 
   Widget _buildSubPage() {
-    final title = _backupSubPage == 1 ? 'WebDAV 备份' : _pages[_subPage];
+    final title = _syncSubPage == 1 ? 'WebDAV 同步' : _pages[_subPage];
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
       onTap: () => FocusScope.of(context).unfocus(),
@@ -1650,7 +1691,7 @@ class _SettingsPageState extends State<_SettingsPage> {
       case 3:
         return _AppearanceSettingsContent();
       case 4:
-        return _backupSubPage == 1
+        return _syncSubPage == 1
             ? _WebDavSettingsContent()
             : _BackupContent(onOpenWebDav: _openWebDavSubPage);
       default:
@@ -1797,54 +1838,87 @@ class _BackupContent extends StatelessWidget {
                       label: const Text('立即同步'),
                     ),
                     OutlinedButton.icon(
+                      onPressed:
+                          settings.webDav.isConfigured && !controller.syncing
+                          ? () => _confirmCloudRestore(context, controller)
+                          : null,
+                      icon: const Icon(Icons.cloud_download_outlined),
+                      label: const Text('从云端恢复'),
+                    ),
+                    OutlinedButton.icon(
                       onPressed: controller.syncing ? null : onOpenWebDav,
                       icon: const Icon(Icons.settings_backup_restore),
                       label: const Text('WebDAV 设置'),
                     ),
                   ],
                 ),
+                const SizedBox(height: 12),
+                const Divider(height: 1),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  secondary: const Icon(Icons.autorenew),
+                  title: const Text('自动同步'),
+                  subtitle: Text(
+                    settings.webDav.isConfigured
+                        ? '每 ${settings.backupAutoSyncIntervalMinutes} 分钟自动同步'
+                        : '配置 WebDAV 后启用',
+                  ),
+                  value: settings.backupAutoSyncEnabled,
+                  onChanged: (value) {
+                    controller.updateSettings(
+                      settings.copyWith(backupAutoSyncEnabled: value),
+                    );
+                  },
+                ),
+                if (settings.backupAutoSyncEnabled)
+                  NumberStepper(
+                    icon: Icons.schedule,
+                    label: '同步间隔',
+                    value: settings.backupAutoSyncIntervalMinutes,
+                    min: 5,
+                    max: 1440,
+                    suffix: '分钟',
+                    onChanged: (value) {
+                      controller.updateSettings(
+                        settings.copyWith(backupAutoSyncIntervalMinutes: value),
+                      );
+                    },
+                  ),
               ],
             ),
           ),
         ),
         _LocalBackupCard(controller: controller, settings: settings),
-        _SettingsSection(
-          icon: Icons.autorenew,
-          title: '自动同步',
-          children: [
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              secondary: const Icon(Icons.autorenew),
-              title: const Text('自动同步'),
-              subtitle: Text(
-                settings.webDav.isConfigured
-                    ? '每 ${settings.backupAutoSyncIntervalMinutes} 分钟自动同步'
-                    : '配置 WebDAV 后启用',
-              ),
-              value: settings.backupAutoSyncEnabled,
-              onChanged: (value) {
-                controller.updateSettings(
-                  settings.copyWith(backupAutoSyncEnabled: value),
-                );
-              },
-            ),
-            NumberStepper(
-              icon: Icons.schedule,
-              label: '同步间隔',
-              value: settings.backupAutoSyncIntervalMinutes,
-              min: 5,
-              max: 1440,
-              suffix: '分钟',
-              onChanged: (value) {
-                controller.updateSettings(
-                  settings.copyWith(backupAutoSyncIntervalMinutes: value),
-                );
-              },
-            ),
-          ],
-        ),
       ],
     );
+  }
+
+  Future<void> _confirmCloudRestore(
+    BuildContext context,
+    AppController controller,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('从云端恢复'),
+          content: const Text('将用云端同步数据覆盖当前本地数据，是否继续？'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('继续恢复'),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed == true) {
+      await controller.restoreFromWebDav();
+    }
   }
 }
 
@@ -1921,6 +1995,46 @@ class _LocalBackupCardState extends State<_LocalBackupCard> {
     }
   }
 
+  Future<void> _restoreFromLocalBackup() async {
+    final fileUri = await PlatformControls.pickBackupFile();
+    if (fileUri == null || !mounted) {
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('从本地恢复'),
+          content: const Text('将用所选同步文件覆盖当前数据，是否继续？'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('继续恢复'),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed != true || !mounted) {
+      return;
+    }
+    final raw = await PlatformControls.readTextFile(fileUri: fileUri);
+    if (raw == null || raw.trim().isEmpty) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(const SnackBar(content: Text('读取同步文件失败')));
+      return;
+    }
+    await widget.controller.restoreFromLocalJson(raw);
+  }
+
   @override
   Widget build(BuildContext context) {
     final settings = widget.settings;
@@ -1943,60 +2057,67 @@ class _LocalBackupCardState extends State<_LocalBackupCard> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    '本地备份',
-                    style: Theme.of(context).textTheme.titleMedium,
+                    '本地同步',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
-                ),
-                FilledButton.icon(
-                  onPressed: _createBackup,
-                  icon: const Icon(Icons.save_alt_outlined),
-                  label: const Text('立即备份'),
                 ),
               ],
             ),
             const SizedBox(height: 10),
             Text(
               localStatus,
-              maxLines: 2,
+              maxLines: 3,
               overflow: TextOverflow.ellipsis,
               style: Theme.of(
                 context,
               ).textTheme.bodyMedium?.copyWith(color: localStatusColor),
             ),
             const SizedBox(height: 14),
-            Row(
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
               children: [
-                Expanded(
-                  child: TextField(
-                    controller: _directoryController,
-                    focusNode: _focusNode,
-                    decoration: const InputDecoration(
-                      labelText: '备份目录',
-                      hintText: '留空使用应用数据目录',
-                      prefixIcon: Icon(Icons.folder_outlined),
-                      border: OutlineInputBorder(),
-                    ),
-                    textInputAction: TextInputAction.done,
-                    onSubmitted: (_) => unawaited(_saveDirectory()),
-                  ),
+                FilledButton.icon(
+                  onPressed: _createBackup,
+                  icon: const Icon(Icons.save_alt_outlined),
+                  label: const Text('立即创建'),
                 ),
-                const SizedBox(width: 8),
-                IconButton.filled(
+                OutlinedButton.icon(
+                  onPressed: _restoreFromLocalBackup,
+                  icon: const Icon(Icons.restore_page_outlined),
+                  label: const Text('从文件恢复'),
+                ),
+                OutlinedButton.icon(
                   onPressed: _pickDirectory,
-                  icon: const Icon(Icons.folder_open, size: 20),
-                  tooltip: '选择文件夹',
+                  icon: const Icon(Icons.folder_open),
+                  label: const Text('选择目录'),
                 ),
               ],
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _directoryController,
+              focusNode: _focusNode,
+              decoration: const InputDecoration(
+                labelText: '同步目录',
+                hintText: '留空使用应用数据目录',
+                prefixIcon: Icon(Icons.folder_outlined),
+                border: OutlineInputBorder(),
+              ),
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) => unawaited(_saveDirectory()),
             ),
             const SizedBox(height: 6),
             const Divider(height: 24),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               secondary: const Icon(Icons.autorenew),
-              title: const Text('定时自动备份'),
+              title: const Text('定时本地同步'),
               subtitle: settings.localBackupAutoEnabled
-                  ? Text('每 ${settings.localBackupAutoIntervalMinutes} 分钟备份一次')
-                  : const Text('关闭后仅手动备份'),
+                  ? Text('每 ${settings.localBackupAutoIntervalMinutes} 分钟同步一次')
+                  : const Text('关闭后仅手动同步'),
               value: settings.localBackupAutoEnabled,
               onChanged: (value) {
                 widget.controller.updateSettings(
@@ -2007,7 +2128,7 @@ class _LocalBackupCardState extends State<_LocalBackupCard> {
             if (settings.localBackupAutoEnabled) ...[
               NumberStepper(
                 icon: Icons.schedule,
-                label: '备份间隔',
+                label: '同步间隔',
                 value: settings.localBackupAutoIntervalMinutes,
                 min: 5,
                 max: 1440,
@@ -2502,8 +2623,10 @@ class _TimerActions extends StatelessWidget {
     required this.phase,
     required this.keepScreenOn,
     required this.pictureInPictureEnabled,
+    required this.hapticsEnabled,
     required this.onToggleKeepScreenOn,
     required this.onTogglePictureInPicture,
+    required this.onUiHaptic,
   });
 
   final AppController controller;
@@ -2511,8 +2634,10 @@ class _TimerActions extends StatelessWidget {
   final TimerPhase phase;
   final bool keepScreenOn;
   final bool pictureInPictureEnabled;
+  final bool hapticsEnabled;
   final VoidCallback onToggleKeepScreenOn;
   final ValueChanged<bool> onTogglePictureInPicture;
+  final Future<void> Function() onUiHaptic;
 
   @override
   Widget build(BuildContext context) {
@@ -2554,7 +2679,9 @@ class _TimerActions extends StatelessWidget {
                       onPressed: running
                           ? controller.pause
                           : () {
-                              unawaited(HapticFeedback.mediumImpact());
+                              if (hapticsEnabled) {
+                                unawaited(onUiHaptic());
+                              }
                               controller.start();
                             },
                       icon: AnimatedSwitcher(
@@ -2574,7 +2701,9 @@ class _TimerActions extends StatelessWidget {
                         tooltip: '停止',
                         onPressed: canStop
                             ? () {
-                                unawaited(HapticFeedback.heavyImpact());
+                                if (hapticsEnabled) {
+                                  unawaited(onUiHaptic());
+                                }
                                 controller.stop();
                               }
                             : null,
@@ -2585,7 +2714,9 @@ class _TimerActions extends StatelessWidget {
                         style: buttonStyle,
                         onPressed: canStop
                             ? () {
-                                unawaited(HapticFeedback.heavyImpact());
+                                if (hapticsEnabled) {
+                                  unawaited(onUiHaptic());
+                                }
                                 controller.stop();
                               }
                             : null,
@@ -2963,7 +3094,7 @@ class _FeedbackSettingsContent extends StatelessWidget {
                 contentPadding: const EdgeInsets.fromLTRB(16, 4, 12, 4),
                 secondary: const Icon(Icons.vibration),
                 title: const Text('切换震动'),
-                subtitle: const Text('进入休息时使用长振动，其余切换使用强提醒'),
+                subtitle: const Text('统一控制 Dock 操作触感与阶段切换振动提醒'),
                 value: settings.completionHapticsEnabled,
                 onChanged: (value) {
                   controller.updateSettings(
@@ -3156,7 +3287,7 @@ class _WebDavSettingsContentState extends State<_WebDavSettingsContent> {
                 FilledButton.icon(
                   onPressed: _saveWebDav,
                   icon: const Icon(Icons.save_outlined),
-                  label: const Text('保存备份设置'),
+                  label: const Text('保存同步设置'),
                 ),
                 OutlinedButton.icon(
                   onPressed: settings.webDav.isConfigured && !controller.syncing
@@ -3283,7 +3414,10 @@ class _NumberStepperState extends State<NumberStepper> {
   }
 
   void _showSavedFeedback() {
-    unawaited(HapticFeedback.selectionClick());
+    final settings = AppScope.read(context).data.settings;
+    if (settings.completionHapticsEnabled) {
+      unawaited(PlatformControls.vibrate(durationMs: 24, amplitude: 140));
+    }
     _feedbackTimer?.cancel();
     if (mounted) setState(() => _savedVisible = true);
     _feedbackTimer = Timer(const Duration(milliseconds: 1400), () {

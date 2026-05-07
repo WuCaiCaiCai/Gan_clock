@@ -4,9 +4,9 @@ plugins {
 }
 
 android {
-    namespace "com.wucai.tomato_clock"
-    compileSdk flutter.compileSdkVersion
-    ndkVersion flutter.ndkVersion
+    namespace = "com.wucai.tomato_clock"
+    compileSdk = flutter.compileSdkVersion
+    ndkVersion = flutter.ndkVersion
 
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
@@ -16,17 +16,20 @@ android {
     defaultConfig {
         applicationId "com.wucai.tomato_clock"
         minSdk 31
-        targetSdk flutter.targetSdkVersion
-        versionCode flutter.versionCode
-        versionName flutter.versionName
+        targetSdk = flutter.targetSdkVersion
+        versionCode = flutter.versionCode
+        versionName = flutter.versionName
     }
 
     buildTypes {
         release {
-            signingConfig signingConfigs.debug
-            minifyEnabled true
-            shrinkResources true
-            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            signingConfig = signingConfigs.debug
+            minifyEnabled = true
+            shrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile('proguard-android-optimize.txt'),
+                'proguard-rules.pro'
+            )
         }
     }
 }

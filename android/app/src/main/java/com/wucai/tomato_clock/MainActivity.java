@@ -1,6 +1,9 @@
 package com.wucai.tomato_clock;
 
 import android.app.PictureInPictureParams;
+import android.media.AudioAttributes;
+import android.media.Ringtone;
+import android.media.RingtoneManager;
 import android.app.Activity;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -20,6 +23,8 @@ import android.util.Rational;
 import android.view.View;
 import android.view.WindowManager;
 import android.provider.DocumentsContract;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import androidx.activity.result.ActivityResult;
@@ -57,6 +62,7 @@ public class MainActivity extends FlutterFragmentActivity {
     private String pipTitle = "";
     private String pipSubtitle = "";
     private Result pendingPickResult;
+    private Result pendingPickBackupFileResult;
     private Result pendingNotificationPermissionResult;
 
     @Override
@@ -109,6 +115,15 @@ public class MainActivity extends FlutterFragmentActivity {
                             stringArgument(call.argument("contents")),
                             result
                     );
+                    break;
+                case "pickBackupFile":
+                    pickBackupFile(result);
+                    break;
+                case "readTextFile":
+                    readTextFile(stringArgument(call.argument("fileUri")), result);
+                    break;
+                case "playCompletionSound":
+                    result.success(playCompletionSound());
                     break;
                 case "vibrate":
                     vibrate(intArgument(call.argument("durationMs"), 900),
@@ -229,8 +244,27 @@ public class MainActivity extends FlutterFragmentActivity {
         }
     }
 
+    private void pickBackupFile(Result result) {
+        if (pendingPickBackupFileResult != null) {
+            result.error("pick_file_in_progress", "A backup file picker is already open.", null);
+            return;
+        }
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("application/json");
+        intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"application/json", "text/json", "*/*"});
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+        pendingPickBackupFileResult = result;
+        try {
+            pickDirectoryLauncher.launch(intent);
+        } catch (ActivityNotFoundException exception) {
+            pendingPickBackupFileResult = null;
+            result.error("activity_not_found", "No document picker is available.", null);
+        }
+    }
+
     private void handlePickDirectoryResult(ActivityResult result) {
-        if (pendingPickResult == null) {
+        if (pendingPickResult == null && pendingPickBackupFileResult == null) {
             return;
         }
 
@@ -238,14 +272,22 @@ public class MainActivity extends FlutterFragmentActivity {
         if (result.getResultCode() != Activity.RESULT_OK
                 || data == null
                 || data.getData() == null) {
-            pendingPickResult.success(null);
-            pendingPickResult = null;
+            if (pendingPickResult != null) {
+                pendingPickResult.success(null);
+                pendingPickResult = null;
+            }
+            if (pendingPickBackupFileResult != null) {
+                pendingPickBackupFileResult.success(null);
+                pendingPickBackupFileResult = null;
+            }
             return;
         }
 
         Uri uri = data.getData();
-        int flags = data.getFlags()
-                & (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+        int requested = pendingPickResult != null
+                ? (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+                : Intent.FLAG_GRANT_READ_URI_PERMISSION;
+        int flags = data.getFlags() & requested;
         try {
             if (flags != 0) {
                 getContentResolver().takePersistableUriPermission(uri, flags);
@@ -253,8 +295,13 @@ public class MainActivity extends FlutterFragmentActivity {
         } catch (SecurityException ignored) {
             // Some document providers return a usable tree Uri without persistable grants.
         }
-        pendingPickResult.success(uri.toString());
-        pendingPickResult = null;
+        if (pendingPickResult != null) {
+            pendingPickResult.success(uri.toString());
+            pendingPickResult = null;
+        } else if (pendingPickBackupFileResult != null) {
+            pendingPickBackupFileResult.success(uri.toString());
+            pendingPickBackupFileResult = null;
+        }
     }
 
     private void writeTextFile(
@@ -303,6 +350,71 @@ public class MainActivity extends FlutterFragmentActivity {
         }
     }
 
+    private void readTextFile(String fileUriText, Result result) {
+        if (fileUriText.isEmpty()) {
+            result.error("invalid_file_uri", "File uri is empty.", null);
+            return;
+        }
+        try {
+            Uri fileUri = Uri.parse(fileUriText);
+            try {
+                getContentResolver().takePersistableUriPermission(
+                        fileUri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION
+                );
+            } catch (SecurityException ignored) {
+                // Some providers don't grant persistable permissions.
+            }
+            ContentResolver resolver = getContentResolver();
+            try (InputStream inputStream = resolver.openInputStream(fileUri)) {
+                if (inputStream == null) {
+                    result.error("open_stream_failed", "Failed to open input stream.", null);
+                    return;
+                }
+                ByteArrayOutputStream output = new ByteArrayOutputStream();
+                byte[] buffer = new byte[8192];
+                int read;
+                while ((read = inputStream.read(buffer)) != -1) {
+                    output.write(buffer, 0, read);
+                }
+                result.success(output.toString(StandardCharsets.UTF_8.name()));
+            }
+        } catch (Exception exception) {
+            result.error("read_text_file_failed", exception.getMessage(), null);
+        }
+    }
+
+    private boolean playCompletionSound() {
+        try {
+            Uri uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
+            if (uri == null) {
+                uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);
+            }
+            if (uri == null) {
+                return false;
+            }
+            Ringtone ringtone = RingtoneManager.getRingtone(this, uri);
+            if (ringtone == null) {
+                return false;
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                ringtone.setVolume(1f);
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                ringtone.setAudioAttributes(
+                        new AudioAttributes.Builder()
+                                .setUsage(AudioAttributes.USAGE_NOTIFICATION_EVENT)
+                                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                                .build()
+                );
+            }
+            ringtone.play();
+            return true;
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
     private void vibrate(int durationMs, int amplitude) {
         VibratorManager vibratorManager = getVibratorManager();
         if (vibratorManager == null) {
@@ -346,7 +458,7 @@ public class MainActivity extends FlutterFragmentActivity {
 
     private PictureInPictureParams buildPictureInPictureParams() {
         PictureInPictureParams.Builder builder = new PictureInPictureParams.Builder()
-                .setAspectRatio(new Rational(1, 1));
+                .setAspectRatio(new Rational(9, 16));
         Rect sourceRect = buildPictureInPictureSourceRect();
         if (sourceRect != null) {
             builder.setSourceRectHint(sourceRect);
@@ -368,11 +480,11 @@ public class MainActivity extends FlutterFragmentActivity {
         if (width <= 0 || height <= 0) {
             return null;
         }
-        // 缩小约 20%，让系统进入 PiP 时目标窗口更小一些
-        int side = Math.round(Math.min(width, height) * 0.58f);
-        int left = Math.max(0, (width - side) / 2);
-        int top = Math.max(0, (height - side) / 2);
-        return new Rect(left, top, left + side, top + side);
+        int hintWidth = Math.round(width * 0.44f);
+        int hintHeight = Math.round(height * 0.44f);
+        int left = Math.max(0, (width - hintWidth) / 2);
+        int top = Math.max(0, (height - hintHeight) / 2);
+        return new Rect(left, top, left + hintWidth, top + hintHeight);
     }
 
     private void notifyPictureInPictureChanged(boolean enabled) {

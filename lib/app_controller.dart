@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
@@ -65,9 +66,9 @@ class AppController extends ChangeNotifier {
     }
     final path = _lastLocalBackupPath;
     if (path == null) {
-      return '本地备份尚未创建';
+      return '本地同步尚未创建';
     }
-    return '本地备份已保存 ${_formatDateTime(_lastLocalBackupAt!)} · $path';
+    return '本地同步已保存 ${_formatDateTime(_lastLocalBackupAt!)} · $path';
   }
 
   String _formatDateTime(DateTime value) {
@@ -167,6 +168,63 @@ class AppController extends ChangeNotifier {
     );
   }
 
+  Future<void> restoreFromLocalJson(String rawJson) async {
+    try {
+      final decoded = TomatoData.fromJson(_decodeJsonObject(rawJson));
+      final now = DateTime.now();
+      final ticked = _timerEngine.tick(decoded, at: now);
+      _data = ticked.data;
+      await _saveData(_data);
+      _restartTicker();
+      _restartAutoSyncTimer();
+      _restartLocalBackupTimer();
+      _message = 'LOCAL_RESTORE_SUCCESS';
+    } on FormatException {
+      _message = '本地同步文件格式无效';
+    } on Object {
+      _message = '本地恢复失败';
+    } finally {
+      _notify();
+    }
+  }
+
+  Future<void> restoreFromWebDav() async {
+    final settings = _data.settings.webDav;
+    if (!settings.isConfigured) {
+      _message = '请先配置 WebDAV';
+      _notify();
+      return;
+    }
+    if (_syncing) {
+      return;
+    }
+    _syncing = true;
+    _lastSyncError = null;
+    _notify();
+    try {
+      final remote = await _webDavService.download(settings);
+      final now = DateTime.now();
+      final ticked = _timerEngine.tick(remote, at: now);
+      _data = ticked.data;
+      await _saveData(_data);
+      _lastSyncAt = now;
+      _lastSyncError = null;
+      _message = 'CLOUD_RESTORE_SUCCESS';
+      _restartTicker();
+      _restartAutoSyncTimer();
+      _restartLocalBackupTimer();
+    } on WebDavException catch (error) {
+      _lastSyncError = error.message;
+      _message = error.message;
+    } on Object {
+      _lastSyncError = '云端恢复失败';
+      _message = '云端恢复失败';
+    } finally {
+      _syncing = false;
+      _notify();
+    }
+  }
+
   Future<void> _runLocalBackup({
     String? directory,
     int keepCount = 0,
@@ -194,7 +252,7 @@ class AppController extends ChangeNotifier {
         _message = 'LOCAL_BACKUP_SUCCESS';
       }
     } on Object {
-      _lastLocalBackupError = '本地备份失败，请检查目录是否可写';
+      _lastLocalBackupError = '本地同步失败，请检查目录是否可写';
       if (manual) {
         _message = _lastLocalBackupError;
       }
@@ -364,6 +422,14 @@ class AppController extends ChangeNotifier {
     if (!_disposed) {
       notifyListeners();
     }
+  }
+
+  Object? _decodeJsonObject(String raw) {
+    final text = raw.trim();
+    if (text.isEmpty) {
+      throw const FormatException('empty');
+    }
+    return jsonDecode(text);
   }
 
   @override
