@@ -4,7 +4,7 @@
 
 苷是一个偏安静、偏手机使用场景的番茄钟。主流程使用 Flutter + Dart + Material Design 3 实现，重点放在沉浸计时、清晰统计、Android 画中画和可备份的数据记录上。
 
-**当前阶段:** Android 与 Linux/Fedora 平台能力补齐，数据同步和系统通知完善。
+**当前阶段:** Android 能力稳定；Linux/Fedora KDE 后台、常亮和常驻通知待继续验证。
 
 ## 当前状态
 
@@ -64,9 +64,10 @@
 ### Linux/Fedora 能力
 
 - [x] Linux runner 接入 `tomato_clock/platform` MethodChannel。
-- [x] 计时进度通知通过 `org.freedesktop.Notifications` DBus 接口发送，兼容 Fedora KDE Plasma 通知中心。
-- [x] KDE 通知 hint 包含 `desktop-entry`、`x-kde-origin-name`、`x-kde.timer` 和进度 `value`。
-- [x] Linux 文件选择、同步文件读写和屏幕常亮 inhibition 已接入。
+- [x] Linux 文件选择和同步文件读写已接入。
+- [x] Fedora KDE 托盘入口当前按用户验证暂记完成，保留后续复测空间。
+- [ ] Fedora KDE 常驻通知仍未验收：当前尝试过 `org.freedesktop.Notifications` resident 通知和 KDE hints，但存在常驻失败/重复弹出风险，下一步需要改成状态变更触发而不是倒计时刷新触发。
+- [ ] Fedora KDE 屏幕常亮仍未验收：当前尝试过 GTK inhibit、`org.freedesktop.ScreenSaver.Inhibit` 和 `org.freedesktop.PowerManagement.Inhibit`，但实际防息屏效果未通过用户验证。
 
 ### 工程与开源
 
@@ -78,6 +79,8 @@
 
 ## 暂缓事项
 
+- [ ] Linux/Fedora KDE 常驻通知：明确需求边界，避免把倒计时进度写成每秒通知；常驻通知只应在开启/关闭/阶段变更时更新。
+- [ ] Linux/Fedora KDE 常亮：用 `qdbus`/`dbus-monitor` 验证 inhibit cookie 是否生效，并确认 KDE 电源管理实际是否接受该抑制。
 - [ ] iOS 后台计时与通知适配。
 - [ ] 桌面端迷你窗口方案。
 - [ ] 各平台原生通知细化。
@@ -102,8 +105,22 @@
 
 - Dart 层负责计时、记录、统计、设置、同步和 UI。
 - Android Java 层只负责系统 API 桥接，包括 PiP、通知、文件选择、震动、提示音和屏幕常亮。
-- Linux C++ runner 只负责 GTK/GIO 系统桥接，包括 Fedora/KDE 通知、文件选择、同步文件读写和屏幕常亮 inhibition。
+- Linux C++ runner 只负责 GTK/GIO/KDE 系统桥接，包括通知、文件选择、同步文件读写、托盘后台和屏幕常亮 inhibition；其中 KDE 常驻通知和常亮仍未通过实际验收。
 - 项目没有 Kotlin，也没有 Kotlin Gradle DSL。
+
+## Linux/Fedora KDE TODO
+
+### 当前问题
+
+- KDE 托盘入口当前按用户验证暂记完成，后续只在常驻通知或常亮验证需要时一起复测。
+- KDE 常驻通知仍不可靠：用户验证为“常驻通知没做好”；曾出现每秒弹通知的错误实现，后续必须避免倒计时 tick 直接触发弹窗。
+- KDE 屏幕常亮仍不可靠：用户验证为“常亮没做好”；现有 inhibit 调用需要用 DBus 工具验证是否真正被 Plasma 电源管理接受。
+
+### 下一步验证
+
+- 用 `dbus-monitor` 或 `qdbus` 观察 `org.freedesktop.ScreenSaver.Inhibit`、`org.freedesktop.PowerManagement.Inhibit` 是否返回有效 cookie，关闭开关时是否释放。
+- 常驻通知只允许在状态变化时调用：开始、停止、开启常驻、关闭常驻、阶段切换；倒计时秒级更新只能进托盘 label 或窗口 UI，不能进通知弹窗。
+- 如果常驻通知必须绑定托盘/后台状态，再复查 KDE 系统托盘设置中 AppIndicator/StatusNotifier 是否启用，以及应用是否注册到 StatusNotifierWatcher。
 
 ## 开发日志
 

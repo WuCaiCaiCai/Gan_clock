@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
@@ -99,6 +100,9 @@ double _actionsBottom(BuildContext context) {
 const _localBackupSuccessMessageToken = 'LOCAL_BACKUP_SUCCESS';
 const _localRestoreSuccessMessageToken = 'LOCAL_RESTORE_SUCCESS';
 const _cloudRestoreSuccessMessageToken = 'CLOUD_RESTORE_SUCCESS';
+
+bool get _usesLinuxPersistentNotification =>
+    defaultTargetPlatform == TargetPlatform.linux;
 
 ThemeData _buildAppTheme(Brightness brightness) {
   final baseScheme = ColorScheme.fromSeed(
@@ -294,6 +298,8 @@ class _TomatoHomePageState extends State<TomatoHomePage>
         title: '',
         subtitle: '',
         keepScreenOn: false,
+        totalSeconds: 1,
+        remainingSeconds: 1,
       ),
     );
     PlatformControls.clearEventHandlers();
@@ -672,6 +678,8 @@ class _TomatoHomePageState extends State<TomatoHomePage>
           title: '',
           subtitle: '',
           keepScreenOn: settings.keepScreenOnEnabled,
+          totalSeconds: 1,
+          remainingSeconds: 1,
         ),
       );
     }
@@ -755,7 +763,11 @@ class _TomatoHomePageState extends State<TomatoHomePage>
     final pipEnabled = pipSwitchEnabled && timer.phase == TimerPhase.running;
     final pipTitle = formatClock(timer.remainingSeconds);
     final pipSubtitle = timer.mode.label;
-    final pipNeedsTitleRefresh = _inPictureInPicture || _pipTransitioning;
+    final linuxPersistentNotification = _usesLinuxPersistentNotification;
+    final pipNeedsTitleRefresh =
+        _inPictureInPicture ||
+        _pipTransitioning ||
+        (linuxPersistentNotification && pipEnabled);
     final shouldSendPipState =
         _lastPipEnabledSent != pipEnabled ||
         _lastPipSubtitleSent != pipSubtitle ||
@@ -773,12 +785,16 @@ class _TomatoHomePageState extends State<TomatoHomePage>
           title: pipTitle,
           subtitle: pipSubtitle,
           keepScreenOn: keepScreenOn,
+          totalSeconds: timer.totalSeconds,
+          remainingSeconds: timer.remainingSeconds,
         ),
       );
     }
 
     final notificationEnabled =
-        timer.phase == TimerPhase.running && !pipSwitchEnabled;
+        timer.phase == TimerPhase.running &&
+        !pipSwitchEnabled &&
+        !linuxPersistentNotification;
     final notificationTitle = formatClock(timer.remainingSeconds);
     final notificationSubtitle = timer.mode.label;
     final notificationTotalSeconds = timer.totalSeconds;
@@ -2736,7 +2752,11 @@ class _TimerActions extends StatelessWidget {
                     const SizedBox(width: 6),
                     _ActionIconButton(
                       size: iconSize,
-                      tooltip: pictureInPictureEnabled
+                      tooltip: _usesLinuxPersistentNotification
+                          ? pictureInPictureEnabled
+                                ? '关闭 KDE 托盘常驻'
+                                : '开启 KDE 托盘常驻'
+                          : pictureInPictureEnabled
                           ? '关闭画中画自动进入'
                           : '开启画中画自动进入',
                       selected: pictureInPictureEnabled,
@@ -2745,7 +2765,11 @@ class _TimerActions extends StatelessWidget {
                               !pictureInPictureEnabled,
                             )
                           : null,
-                      icon: pictureInPictureEnabled
+                      icon: _usesLinuxPersistentNotification
+                          ? pictureInPictureEnabled
+                                ? Icons.notifications_active
+                                : Icons.notifications_none
+                          : pictureInPictureEnabled
                           ? Icons.picture_in_picture_alt
                           : Icons.picture_in_picture_alt_outlined,
                     ),

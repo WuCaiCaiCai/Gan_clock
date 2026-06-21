@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import 'models.dart';
 import 'platform_controls.dart';
 
@@ -24,6 +26,14 @@ class SystemCompletionFeedback implements CompletionFeedback {
   @override
   Future<void> notify(TimerMode completedMode, AppSettings settings) async {
     final futures = <Future<void>>[];
+    if (defaultTargetPlatform == TargetPlatform.linux) {
+      futures.add(
+        PlatformControls.showStageNotification(
+          title: completedMode == TimerMode.focus ? '专注完成' : '休息结束',
+          subtitle: completedMode == TimerMode.focus ? '进入休息时间' : '回到专注',
+        ),
+      );
+    }
     if (settings.completionHapticsEnabled) {
       if (completedMode == TimerMode.focus) {
         // 专注结束 → 进入休息：长振提示

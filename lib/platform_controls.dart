@@ -33,13 +33,22 @@ class PlatformControls {
     required String title,
     required String subtitle,
     required bool keepScreenOn,
+    int? totalSeconds,
+    int? remainingSeconds,
   }) async {
-    await _invokeSilently('setPipState', {
+    final arguments = <String, Object?>{
       'enabled': enabled,
       'title': title,
       'subtitle': subtitle,
       'keepScreenOn': keepScreenOn,
-    });
+    };
+    if (totalSeconds != null) {
+      arguments['totalSeconds'] = totalSeconds;
+    }
+    if (remainingSeconds != null) {
+      arguments['remainingSeconds'] = remainingSeconds;
+    }
+    await _invokeSilently('setPipState', arguments);
   }
 
   static Future<void> enterPictureInPicture() async {
@@ -59,6 +68,16 @@ class PlatformControls {
       'subtitle': subtitle,
       'totalSeconds': totalSeconds,
       'remainingSeconds': remainingSeconds,
+    });
+  }
+
+  static Future<void> showStageNotification({
+    required String title,
+    required String subtitle,
+  }) async {
+    await _invokeSilently('showStageNotification', {
+      'title': title,
+      'subtitle': subtitle,
     });
   }
 

@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=苷
+GenericName=Pomodoro Timer
+Comment=A quiet Flutter pomodoro timer
+Exec=tomato_clock %U
+Icon=com.wucai.tomato_clock.tomato_clock
+Terminal=false
+Categories=Utility;GTK;
+StartupNotify=true
+StartupWMClass=com.wucai.tomato_clock.tomato_clock
+X-GNOME-UsesNotifications=true
