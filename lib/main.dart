@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
@@ -88,9 +87,6 @@ class _TomatoAppState extends State<TomatoApp> {
 const localBackupSuccessMessageToken = 'LOCAL_BACKUP_SUCCESS';
 const localRestoreSuccessMessageToken = 'LOCAL_RESTORE_SUCCESS';
 const cloudRestoreSuccessMessageToken = 'CLOUD_RESTORE_SUCCESS';
-
-bool get usesLinuxPersistentNotification =>
-    defaultTargetPlatform == TargetPlatform.linux;
 
 ThemeData _buildAppTheme(Brightness brightness) {
   final baseScheme = ColorScheme.fromSeed(
@@ -751,7 +747,7 @@ class _TomatoHomePageState extends State<TomatoHomePage>
     final pipEnabled = pipSwitchEnabled && timer.phase == TimerPhase.running;
     final pipTitle = formatClock(timer.remainingSeconds);
     final pipSubtitle = timer.mode.label;
-    final linuxPersistentNotification = usesLinuxPersistentNotification;
+    final linuxPersistentNotification = usesPersistentTray;
     final pipNeedsTitleRefresh =
         _inPictureInPicture ||
         _pipTransitioning ||

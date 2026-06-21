@@ -1,7 +1,6 @@
-import 'package:flutter/foundation.dart';
-
 import 'models.dart';
 import 'platform_controls.dart';
+import 'utils.dart';
 
 abstract class CompletionFeedback {
   Future<void> notifyStart(AppSettings settings);
@@ -26,7 +25,7 @@ class SystemCompletionFeedback implements CompletionFeedback {
   @override
   Future<void> notify(TimerMode completedMode, AppSettings settings) async {
     final futures = <Future<void>>[];
-    if (defaultTargetPlatform == TargetPlatform.linux) {
+    if (usesPersistentTray) {
       futures.add(
         PlatformControls.showStageNotification(
           title: completedMode == TimerMode.focus ? '专注完成' : '休息结束',

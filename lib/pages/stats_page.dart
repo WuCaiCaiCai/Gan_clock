@@ -4,6 +4,8 @@ import '../heatmap.dart';
 import '../models.dart';
 import '../utils.dart';
 
+const _completedColor = Color(0xFF2F7D57);
+
 class StatsPage extends StatefulWidget {
   const StatsPage({required this.data, required this.onSubPageOpenChanged});
 
@@ -50,6 +52,7 @@ class _StatsPageState extends State<StatsPage> {
       child: AnimatedSwitcher(
         duration: const Duration(milliseconds: 60),
         switchInCurve: Curves.easeOutCubic,
+        switchOutCurve: Curves.easeInCubic,
         transitionBuilder: (child, animation) {
           return FadeTransition(opacity: animation, child: child);
         },
@@ -145,7 +148,7 @@ class _SessionDetail extends StatelessWidget {
                                     ? Icons.check_circle_outline
                                     : Icons.stop_circle_outlined,
                                 color: session.completed
-                                    ? const Color(0xFF2F7D57)
+                                    ? _completedColor
                                     : scheme.error,
                               ),
                             ],

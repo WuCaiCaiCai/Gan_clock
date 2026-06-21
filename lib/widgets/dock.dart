@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
 import '../utils.dart';
+import 'chrome_fade.dart';
 
 class FloatingDock extends StatelessWidget {
   const FloatingDock({
@@ -21,7 +22,7 @@ class FloatingDock extends StatelessWidget {
       left: dockHorizontalMargin,
       right: dockHorizontalMargin,
       bottom: dockBottom(context),
-      child: _ChromeFade(
+      child: ChromeFade(
         hidden: hidden,
         slideOffset: const Offset(0, 0.18),
         child: Center(
@@ -188,36 +189,6 @@ class _DockItemState extends State<_DockItem> {
               ),
             ),
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ChromeFade extends StatelessWidget {
-  const _ChromeFade({
-    required this.hidden,
-    required this.slideOffset,
-    required this.child,
-  });
-
-  final bool hidden;
-  final Offset slideOffset;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return IgnorePointer(
-      ignoring: hidden,
-      child: AnimatedOpacity(
-        opacity: hidden ? 0 : 1,
-        duration: const Duration(milliseconds: 150),
-        curve: Curves.easeOutCubic,
-        child: AnimatedSlide(
-          offset: hidden ? slideOffset : Offset.zero,
-          duration: const Duration(milliseconds: 150),
-          curve: Curves.easeOutCubic,
-          child: child,
         ),
       ),
     );

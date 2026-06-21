@@ -48,6 +48,7 @@ class _SettingsPageState extends State<SettingsPage> {
       child: AnimatedSwitcher(
         duration: const Duration(milliseconds: 60),
         switchInCurve: Curves.easeOutCubic,
+        switchOutCurve: Curves.easeInCubic,
         transitionBuilder: (child, animation) {
           return FadeTransition(opacity: animation, child: child);
         },

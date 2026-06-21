@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'models.dart';
@@ -138,3 +139,6 @@ StagePalette modePalette(TimerMode mode) {
       );
   }
 }
+
+bool get usesPersistentTray =>
+    defaultTargetPlatform == TargetPlatform.linux;

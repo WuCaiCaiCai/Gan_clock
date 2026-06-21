@@ -8,6 +8,7 @@ import '../hitokoto_service.dart';
 import '../models.dart';
 import '../utils.dart';
 import '../widgets/action_buttons.dart';
+import '../widgets/chrome_fade.dart';
 import '../widgets/timer_ring.dart';
 
 class TimerPage extends StatelessWidget {
@@ -76,7 +77,7 @@ class TimerPage extends StatelessWidget {
                 left: 24,
                 right: 24,
                 top: quoteTop,
-                child: _ChromeFade(
+                child: ChromeFade(
                   hidden: false,
                   slideOffset: const Offset(0, -0.08),
                   child: _HitokotoLine(mode: timer.mode),
@@ -86,7 +87,7 @@ class TimerPage extends StatelessWidget {
                 left: 16,
                 right: 16,
                 bottom: actionsBottom(context),
-                child: _ChromeFade(
+                child: ChromeFade(
                   hidden: quiet,
                   slideOffset: const Offset(0, 0.14),
                   child: TimerActions(
@@ -112,7 +113,7 @@ class TimerPage extends StatelessWidget {
                 left: 20,
                 right: 20,
                 top: 16,
-                child: _ChromeFade(
+                child: ChromeFade(
                   hidden: quiet,
                   slideOffset: const Offset(0, -0.08),
                   child: Center(
@@ -289,36 +290,6 @@ class _HitokotoLineState extends State<_HitokotoLine> {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ChromeFade extends StatelessWidget {
-  const _ChromeFade({
-    required this.hidden,
-    required this.child,
-    this.slideOffset = Offset.zero,
-  });
-
-  final bool hidden;
-  final Widget child;
-  final Offset slideOffset;
-
-  @override
-  Widget build(BuildContext context) {
-    return IgnorePointer(
-      ignoring: hidden,
-      child: AnimatedOpacity(
-        opacity: hidden ? 0 : 1,
-        duration: const Duration(milliseconds: 150),
-        curve: Curves.easeOutCubic,
-        child: AnimatedSlide(
-          offset: hidden ? slideOffset : Offset.zero,
-          duration: const Duration(milliseconds: 150),
-          curve: Curves.easeOutCubic,
-          child: child,
         ),
       ),
     );

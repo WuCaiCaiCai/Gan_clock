@@ -1,10 +1,10 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../app_controller.dart';
 import '../models.dart';
+import '../utils.dart';
 
 class TimerActions extends StatelessWidget {
   const TimerActions({
@@ -36,7 +36,7 @@ class TimerActions extends StatelessWidget {
     final canStop = phase != TimerPhase.idle;
     final canSkip = running && mode != TimerMode.focus;
     final scheme = Theme.of(context).colorScheme;
-    final isLinux = defaultTargetPlatform == TargetPlatform.linux;
+    final trayPlatform = usesPersistentTray;
     return LayoutBuilder(
       builder: (context, constraints) {
         final compact = constraints.maxWidth < 360;
@@ -128,7 +128,7 @@ class TimerActions extends StatelessWidget {
                     const SizedBox(width: 6),
                     _ActionIconButton(
                       size: iconSize,
-                      tooltip: isLinux
+                      tooltip: trayPlatform
                           ? pictureInPictureEnabled
                                 ? '关闭 KDE 托盘常驻'
                                 : '开启 KDE 托盘常驻'
