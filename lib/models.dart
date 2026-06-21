@@ -527,9 +527,11 @@ class TomatoData {
     );
   }
 
+  static const currentSchemaVersion = 1;
+
   Map<String, Object?> toJson() {
     return {
-      'schemaVersion': 1,
+      'schemaVersion': currentSchemaVersion,
       'updatedAt': updatedAt.toUtc().toIso8601String(),
       'settings': settings.toJson(),
       'sessions': sessions.map((session) => session.toJson()).toList(),
@@ -557,9 +559,10 @@ class TomatoData {
     if (value is! Map<String, Object?>) {
       return TomatoData.initial();
     }
-    final settings = AppSettings.fromJson(value['settings']);
+    final data = _migrateSchema(value);
+    final settings = AppSettings.fromJson(data['settings']);
     final sessionsById = <String, FocusSession>{};
-    final rawSessions = value['sessions'];
+    final rawSessions = data['sessions'];
     if (rawSessions is List<Object?>) {
       for (final item in rawSessions) {
         try {
@@ -578,11 +581,24 @@ class TomatoData {
     return TomatoData(
       settings: settings,
       sessions: sessions,
-      timer: TimerSnapshot.fromJson(value['timer'], settings),
-      focusCycleCount: _boundedInt(value['focusCycleCount'], 0, 1000000, 0),
-      updatedAt: _dateTimeOrNull(value['updatedAt']) ?? DateTime.now(),
+      timer: TimerSnapshot.fromJson(data['timer'], settings),
+      focusCycleCount: _boundedInt(data['focusCycleCount'], 0, 1000000, 0),
+      updatedAt: _dateTimeOrNull(data['updatedAt']) ?? DateTime.now(),
     );
   }
+}
+
+Map<String, Object?> _migrateSchema(Map<String, Object?> raw) {
+  final version = switch (raw['schemaVersion']) {
+    int v => v,
+    _ => 0, // ponytail: pre-versioning data, compatible with v1
+  };
+  if (version >= TomatoData.currentSchemaVersion) {
+    return raw;
+  }
+  // ponytail: add schema migrations here when fields change
+  // e.g. if (version < 2) { raw['newField'] = defaultValueFromOldField }
+  return raw;
 }
 
 int _boundedInt(Object? value, int min, int max, int fallback) {
