@@ -268,3 +268,73 @@
 - 新增 Material 3 主界面，包含倒计时、开始/暂停/重置/跳过、今日统计、最近记录和设置面板。
 - 设置面板支持自定义专注/休息时长、长休间隔、WebDAV 配置保存和手动同步。
 - 补充 Widget smoke test 与计时引擎单元测试。
+
+### 2026-06-21 项目结构拆分与发布配置
+
+- `lib/main.dart` 按关注点拆分为 `lib/pages/`、`lib/widgets/`、`lib/utils.dart`。
+- 新增 `lib/utils.dart` 统一导出格式化函数、颜色主题和布局常量。
+- `AndroidManifest.xml` 添加 `android:debuggable="false"` 禁止 debug 包被 release 替换。
+- `android/app/build.gradle` 改为条件签名：有 `key.properties` 时用 release 签名，无则回退 debug 签名。
+- `models.dart` 新增 `currentSchemaVersion` 和 `_migrateSchema()`，读取老版本数据时走迁移链，避免新版本覆盖格式损坏的旧数据。
+- Web 平台基础文件纳入版本控制。
+
+---
+
+## 版本管理与签名发布
+
+### 版本号
+
+只改 `pubspec.yaml` 一行：
+
+```yaml
+version: 0.1.2+3   # 0.1.2=用户可见版本, +3=Android versionCode（必须递增）
+```
+
+### 签名配置（一次性）
+
+文件位置、如何找到之前的 keystore、如何创建 `key.properties`：
+
+#### 如果你有之前的 release keystore（Android Studio 生成的 `.jks` 或 `.keystore`）
+
+1. 把 `.jks` 文件复制到 `android/key.jks`
+2. 在 `android/` 下创建 `key.properties`：
+
+```
+storePassword=你创建时填的密码
+keyPassword=你创建时填的密码
+keyAlias=upload
+storeFile=key.jks
+```
+
+#### 如果你没有 keystore（初次发布）
+
+```bash
+keytool -genkey -v -keystore android/key.jks -keyalg RSA \
+  -keysize 2048 -validity 10000 -alias upload
+```
+
+按提示填信息，记住密码。然后同上创建 `key.properties`。
+
+### 构建命令
+
+```bash
+# 签名 APK（直发/侧载）
+flutter build apk --release
+# 输出: build/app/outputs/flutter-apk/app-release.apk
+
+# App Bundle（Google Play 上架）
+flutter build appbundle --release
+# 输出: build/app/outputs/bundle/release/app-release.aab
+
+# Linux 桌面
+flutter build linux --release
+# 输出: build/linux/x64/release/bundle/
+
+# Web
+flutter build web --release
+# 输出: build/web/
+```
+
+### 调试版本限制
+
+`AndroidManifest.xml` 中 `android:debuggable="false"` 已设置。如果用 `flutter build apk --debug` 构建，产物会被标记为 debuggable，系统不会让它覆盖已安装的 release 版本。切换调试和发布版本时，需要先卸载旧版本再安装。发布用始终用 `--release` 标志构建。

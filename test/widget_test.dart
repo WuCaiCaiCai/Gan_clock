@@ -5,7 +5,9 @@ import 'package:tomato_clock/completion_feedback.dart';
 import 'package:tomato_clock/heatmap.dart';
 import 'package:tomato_clock/main.dart';
 import 'package:tomato_clock/models.dart';
+import 'package:tomato_clock/pages/settings_page.dart';
 import 'package:tomato_clock/storage.dart';
+import 'package:tomato_clock/widgets/timer_ring.dart';
 
 class MemoryStore implements TomatoStore {
   MemoryStore(this.data);
