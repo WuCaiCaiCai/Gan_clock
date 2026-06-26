@@ -210,6 +210,7 @@ class _TomatoHomePageState extends State<TomatoHomePage>
   bool _ignoreNextQuietTap = false;
   bool _notificationPermissionChecked = false;
   bool _notificationPromptVisible = false;
+  bool _locationPermissionChecked = false;
   bool? _lastKeepScreenOnSent;
   bool? _lastPipEnabledSent;
   String? _lastPipTitleSent;
@@ -244,6 +245,7 @@ class _TomatoHomePageState extends State<TomatoHomePage>
     _syncIdleChrome();
     _syncPlatformControls();
     _requestNotificationPermissionIfNeeded();
+    _requestLocationPermissionIfNeeded();
   }
 
   @override
@@ -390,6 +392,14 @@ class _TomatoHomePageState extends State<TomatoHomePage>
     if (shouldOpenSettings == true) {
       await PlatformControls.openNotificationSettings();
     }
+  }
+
+  Future<void> _requestLocationPermissionIfNeeded() async {
+    if (_locationPermissionChecked) {
+      return;
+    }
+    _locationPermissionChecked = true;
+    await PlatformControls.requestLocationPermission();
   }
 
   @override
@@ -1102,7 +1112,7 @@ class _TimerDeck extends StatelessWidget {
   }
 }
 
-// ponytail: mask stays visible until sheet fully slides off screen
+// ponytail: mask + sheet animate as one piece, mask stays until sheet fully off
 class _StatsSheetOverlay extends StatelessWidget {
   const _StatsSheetOverlay({
     required this.visible,
@@ -1134,25 +1144,23 @@ class _StatsSheetOverlay extends StatelessWidget {
     return Positioned.fill(
       child: IgnorePointer(
         ignoring: !visible,
-        child: Stack(
-          children: [
-            AnimatedOpacity(
-              opacity: visible ? 1 : 0,
-              duration: Duration.zero,
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: onClose,
-                child: ColoredBox(color: Colors.black.withAlpha(54)),
-              ),
-            ),
-            Align(
-              alignment: Alignment.bottomCenter,
-              child: AnimatedSlide(
-                offset: visible ? Offset.zero : const Offset(0, 1),
-                duration: duration,
-                curve: visible ? Curves.easeOutCubic : Curves.easeInCubic,
-                onEnd: onAnimationEnd,
-                child: SafeArea(
+        child: Align(
+          alignment: Alignment.bottomCenter,
+          child: AnimatedSlide(
+            offset: visible ? Offset.zero : const Offset(0, 1),
+            duration: duration,
+            curve: visible ? Curves.easeOutCubic : Curves.easeInCubic,
+            onEnd: onAnimationEnd,
+            child: Column(
+              children: [
+                Expanded(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: onClose,
+                    child: ColoredBox(color: Colors.black.withAlpha(54)),
+                  ),
+                ),
+                SafeArea(
                   top: false,
                   minimum: EdgeInsets.only(bottom: bottomInset > 0 ? 0 : 10),
                   child: FractionallySizedBox(
@@ -1192,9 +1200,9 @@ class _StatsSheetOverlay extends StatelessWidget {
                     ),
                   ),
                 ),
-              ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );

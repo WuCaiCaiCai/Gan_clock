@@ -105,6 +105,10 @@ class AppController extends ChangeNotifier {
     await _replaceData(_timerEngine.reset(_data));
   }
 
+  Future<void> stop() async {
+    await _replaceData(_timerEngine.stop(_data));
+  }
+
   Future<void> skip() async {
     final before = _data.timer;
     final next = _timerEngine.skip(_data);

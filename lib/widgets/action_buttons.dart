@@ -35,6 +35,7 @@ class TimerActions extends StatelessWidget {
   Widget build(BuildContext context) {
     final running = phase == TimerPhase.running;
     final paused = phase == TimerPhase.paused;
+    final canStop = phase != TimerPhase.idle;
     final canSkip = running && mode != TimerMode.focus;
     final scheme = Theme.of(context).colorScheme;
     final accent = running ? scheme.primary : scheme.outlineVariant;
@@ -117,6 +118,20 @@ class TimerActions extends StatelessWidget {
                               : '开始',
                         ),
                       ),
+                    if (canStop) ...[
+                      const SizedBox(width: 6),
+                      _ActionIconButton(
+                        size: iconSize,
+                        tooltip: '停止',
+                        onPressed: () {
+                          if (hapticsEnabled) {
+                            unawaited(onUiHaptic());
+                          }
+                          controller.stop();
+                        },
+                        icon: Icons.stop_circle_outlined,
+                      ),
+                    ],
                     const SizedBox(width: 6),
                     _ActionIconButton(
                       size: iconSize,

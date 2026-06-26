@@ -101,7 +101,10 @@ class TimerPage extends StatelessWidget {
                 ),
               ),
               Center(
-                child: _PipReturnScale(
+                child: Transform.translate(
+                  // ponytail: compensate SafeArea top so ring is visually centered on punch-hole screens
+                  offset: Offset(0, -MediaQuery.paddingOf(context).top / 2),
+                  child: _PipReturnScale(
                   active: expandFromPictureInPicture,
                   child: _TimerFace(
                     oledMode: oledMode,
@@ -111,6 +114,7 @@ class TimerPage extends StatelessWidget {
                       showInnerStatus: false,
                     ),
                   ),
+                ),
                 ),
               ),
               Positioned(
@@ -236,8 +240,8 @@ class _AmbientInfoLineState extends State<_AmbientInfoLine> {
           child: Align(
             alignment: Alignment.centerRight,
             child: _AmbientChip(
-              icon: Icons.wb_cloudy_outlined,
-              label: _weather?.label ?? '天气 --',
+              icon: _weatherIcon(_weather?.condition),
+              label: _weather == null ? '--' : '${_weather!.temperatureC}°',
               style: labelStyle,
             ),
           ),
@@ -293,6 +297,19 @@ String _formatTime(DateTime value) {
   final local = value.toLocal();
   return '${local.hour.toString().padLeft(2, '0')}:'
       '${local.minute.toString().padLeft(2, '0')}';
+}
+
+IconData _weatherIcon(String? condition) {
+  return switch (condition) {
+    '晴' => Icons.wb_sunny_outlined,
+    '少云' => Icons.filter_drama_outlined,
+    '多云' => Icons.cloud_outlined,
+    '雾' => Icons.foggy,
+    '雪' || '阵雪' => Icons.ac_unit,
+    '雷雨' => Icons.thunderstorm_outlined,
+    '雨' || '阵雨' || '毛毛雨' => Icons.water_drop_outlined,
+    _ => Icons.wb_cloudy_outlined,
+  };
 }
 
 class _TimerFace extends StatelessWidget {

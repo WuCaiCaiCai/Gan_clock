@@ -85,6 +85,23 @@ class TomatoTimerEngine {
     );
   }
 
+  TomatoData stop(TomatoData data, {DateTime? at}) {
+    final now = at ?? DateTime.now();
+    final ticked = tick(data, at: now).data;
+    final current = ticked.timer;
+    if (current.phase == TimerPhase.idle) {
+      return ticked.copyWith(
+        timer: snapshotForMode(TimerMode.focus, ticked.settings),
+        updatedAt: now,
+      );
+    }
+
+    final stopped = _recordStoppedFocus(ticked, current, now);
+    return stopped.copyWith(
+      timer: snapshotForMode(TimerMode.focus, stopped.settings),
+      updatedAt: now,
+    );
+  }
 
   TomatoData selectMode(TomatoData data, TimerMode mode, {DateTime? at}) {
     final now = at ?? DateTime.now();
@@ -232,6 +249,37 @@ class TomatoTimerEngine {
     );
   }
 
+  TomatoData _recordStoppedFocus(
+    TomatoData data,
+    TimerSnapshot current,
+    DateTime now,
+  ) {
+    if (current.mode != TimerMode.focus) {
+      return data;
+    }
+    final focusedSeconds = (current.totalSeconds - current.remainingSeconds)
+        .clamp(0, current.totalSeconds);
+    if (focusedSeconds < FocusSession.minimumRecordedSeconds) {
+      return data;
+    }
+
+    final startedAt =
+        current.startedAt ?? now.subtract(Duration(seconds: focusedSeconds));
+    return data.copyWith(
+      sessions: [
+        FocusSession(
+          id: 'focus-stop-${now.microsecondsSinceEpoch}',
+          startedAt: startedAt,
+          endedAt: now,
+          plannedSeconds: current.totalSeconds,
+          focusedSeconds: focusedSeconds,
+          completed: false,
+        ),
+        ...data.sessions,
+      ],
+      updatedAt: now,
+    );
+  }
 
   TimerMode _nextBreakMode(int completedFocusCount, AppSettings settings) {
     if (completedFocusCount % settings.roundsBeforeLongBreak == 0) {
