@@ -42,8 +42,15 @@ class WeatherService {
     if (location == null) {
       return null;
     }
+    final district = await _reverseGeocode(location.latitude, location.longitude);
+    final place = district ?? location.city;
     final weather = await _fetchWeather(location);
-    return weather;
+    if (weather == null) return null;
+    return WeatherSnapshot(
+      place: place,
+      temperatureC: weather.temperatureC,
+      condition: weather.condition,
+    );
   }
 
   Future<_WeatherLocation?> _fetchLocation() async {
@@ -59,11 +66,37 @@ class WeatherService {
       return null;
     }
     final city = (response['city'] as String?) ?? '';
+    final region = (response['region'] as String?) ?? (response['regionName'] as String?) ?? '';
+    // Build best available place name from API data
+    final apiPlace = region.isNotEmpty && region != city ? '$region$city' : city;
     return _WeatherLocation(
       latitude: latitude,
       longitude: longitude,
-      city: city,
+      city: apiPlace,
     );
+  }
+
+  // ponytail: Nominatim reverse geocode for district-level name
+  Future<String?> _reverseGeocode(double lat, double lon) async {
+    try {
+      final uri = Uri.https('nominatim.openstreetmap.org', '/reverse', {
+        'lat': lat.toStringAsFixed(6),
+        'lon': lon.toStringAsFixed(6),
+        'format': 'json',
+        'zoom': '14',
+        'accept-language': 'zh',
+      });
+      final response = await _getJson(uri);
+      final address = response?['address'];
+      if (address is! Map<String, Object?>) return null;
+      // Prefer district/county/suburb level for Chinese addresses
+      return (address['city_district'] as String?) ??
+          (address['county'] as String?) ??
+          (address['suburb'] as String?) ??
+          (address['city'] as String?);
+    } on Object {
+      return null;
+    }
   }
 
   Future<WeatherSnapshot?> _fetchWeather(_WeatherLocation location) async {

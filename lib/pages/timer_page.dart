@@ -180,35 +180,33 @@ class _AmbientInfoLineState extends State<_AmbientInfoLine> {
   WeatherSnapshot? _weather;
   late DateTime _now;
   Timer? _clockTimer;
+  Timer? _weatherTimer;
 
   @override
   void initState() {
     super.initState();
     _now = DateTime.now();
     _clockTimer = Timer.periodic(const Duration(minutes: 1), (_) {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _now = DateTime.now();
-      });
+      if (!mounted) return;
+      setState(() => _now = DateTime.now());
+    });
+    _weatherTimer = Timer.periodic(const Duration(minutes: 30), (_) {
+      if (!mounted) return;
+      unawaited(_loadWeather());
     });
     unawaited(_loadWeather());
   }
 
   Future<void> _loadWeather() async {
     final weather = await _weatherService.fetch();
-    if (!mounted || weather == null) {
-      return;
-    }
-    setState(() {
-      _weather = weather;
-    });
+    if (!mounted || weather == null) return;
+    setState(() => _weather = weather);
   }
 
   @override
   void dispose() {
     _clockTimer?.cancel();
+    _weatherTimer?.cancel();
     super.dispose();
   }
 
@@ -236,7 +234,9 @@ class _AmbientInfoLineState extends State<_AmbientInfoLine> {
               alignment: Alignment.centerRight,
               child: _AmbientChip(
                 icon: _weatherIcon(_weather?.condition),
-                label: _weather == null ? '--' : '${_weather!.temperatureC}°',
+                label: _weather == null
+                    ? '--'
+                    : '${_weather!.place} ${_weather!.temperatureC}°',
                 iconSize: 18,
                 style: labelStyle,
               ),
