@@ -27,9 +27,8 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   int _subPage = 0;
-  int _syncSubPage = 0;
 
-  static const _pages = ['', '计时与待机', '切换提醒', '外观', '同步'];
+  static const _pages = ['', '计时与待机', '切换提醒', '外观', '备份'];
 
   @override
   void dispose() {
@@ -54,7 +53,7 @@ class _SettingsPageState extends State<SettingsPage> {
           return FadeTransition(opacity: animation, child: child);
         },
         child: KeyedSubtree(
-          key: ValueKey('settings-$_subPage-$_syncSubPage'),
+          key: ValueKey('settings-$_subPage'),
           child: _subPage == 0 ? _buildMain() : _buildSubPage(),
         ),
       ),
@@ -62,14 +61,9 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   void _goBack() {
-    if (_subPage == 4 && _syncSubPage == 1) {
-      setState(() => _syncSubPage = 0);
-      return;
-    }
     if (_subPage != 0) {
       _setPageState(() {
         _subPage = 0;
-        _syncSubPage = 0;
       });
     }
   }
@@ -77,16 +71,9 @@ class _SettingsPageState extends State<SettingsPage> {
   void _openSubPage(int page) {
     _setPageState(() {
       _subPage = page;
-      _syncSubPage = 0;
     });
   }
 
-  void _openWebDavSubPage() {
-    _setPageState(() {
-      _subPage = 4;
-      _syncSubPage = 1;
-    });
-  }
 
   void _setPageState(VoidCallback update) {
     final wasOpen = _subPage != 0;
@@ -144,17 +131,13 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
             const SizedBox(height: 14),
             _SettingsSection(
-              icon: Icons.sync_alt,
+              icon: Icons.folder_copy_outlined,
               title: '数据',
               children: [
                 ListTile(
-                  leading: const Icon(Icons.sync),
-                  title: const Text('同步'),
-                  subtitle: Text(
-                    settings.webDav.isConfigured
-                        ? '本地同步 · WebDAV 已配置'
-                        : '本地同步 · WebDAV 未配置',
-                  ),
+                  leading: const Icon(Icons.folder_copy_outlined),
+                  title: const Text('备份'),
+                  subtitle: const Text('本地备份与恢复'),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => _openSubPage(4),
                 ),
@@ -167,7 +150,7 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Widget _buildSubPage() {
-    final title = _syncSubPage == 1 ? 'WebDAV 同步' : _pages[_subPage];
+    final title = _pages[_subPage];
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
       onTap: () => FocusScope.of(context).unfocus(),
@@ -210,9 +193,7 @@ class _SettingsPageState extends State<SettingsPage> {
       case 3:
         return const _AppearanceSettingsContent();
       case 4:
-        return _syncSubPage == 1
-            ? const _WebDavSettingsContent()
-            : _BackupContent(onOpenWebDav: _openWebDavSubPage);
+        return const _BackupContent();
       default:
         return const SizedBox.shrink();
     }
@@ -336,150 +317,18 @@ class _SettingsNote extends StatelessWidget {
 }
 
 class _BackupContent extends StatelessWidget {
-  const _BackupContent({required this.onOpenWebDav});
-
-  final VoidCallback onOpenWebDav;
+  const _BackupContent();
 
   @override
   Widget build(BuildContext context) {
     final controller = AppScope.watch(context);
     final settings = controller.data.settings;
-    final scheme = Theme.of(context).colorScheme;
-    final lastSyncAt = controller.lastSyncAt;
-    final status = controller.syncing
-        ? '正在同步'
-        : controller.lastSyncError ?? lastSyncLabel(lastSyncAt);
 
     return _SettingsSubPageScaffold(
       children: [
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(18),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(Icons.cloud_done_outlined, color: scheme.primary),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        '云端同步',
-                        style: Theme.of(context).textTheme.titleMedium
-                            ?.copyWith(fontWeight: FontWeight.w600),
-                      ),
-                    ),
-                    if (controller.syncing)
-                      const SizedBox.square(
-                        dimension: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  status,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: controller.lastSyncError == null
-                        ? scheme.onSurfaceVariant
-                        : scheme.error,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Wrap(
-                  spacing: 12,
-                  runSpacing: 12,
-                  children: [
-                    FilledButton.icon(
-                      onPressed:
-                          settings.webDav.isConfigured && !controller.syncing
-                          ? controller.syncNow
-                          : null,
-                      icon: const Icon(Icons.sync),
-                      label: const Text('立即同步'),
-                    ),
-                    OutlinedButton.icon(
-                      onPressed:
-                          settings.webDav.isConfigured && !controller.syncing
-                          ? () => _confirmCloudRestore(context, controller)
-                          : null,
-                      icon: const Icon(Icons.cloud_download_outlined),
-                      label: const Text('从云端恢复'),
-                    ),
-                    OutlinedButton.icon(
-                      onPressed: controller.syncing ? null : onOpenWebDav,
-                      icon: const Icon(Icons.settings_backup_restore),
-                      label: const Text('WebDAV 设置'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                const Divider(height: 1),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  secondary: const Icon(Icons.autorenew),
-                  title: const Text('自动同步'),
-                  subtitle: Text(
-                    settings.webDav.isConfigured
-                        ? '每 ${settings.backupAutoSyncIntervalMinutes} 分钟自动同步'
-                        : '配置 WebDAV 后启用',
-                  ),
-                  value: settings.backupAutoSyncEnabled,
-                  onChanged: (value) {
-                    controller.updateSettings(
-                      settings.copyWith(backupAutoSyncEnabled: value),
-                    );
-                  },
-                ),
-                if (settings.backupAutoSyncEnabled)
-                  NumberStepper(
-                    icon: Icons.schedule,
-                    label: '同步间隔',
-                    value: settings.backupAutoSyncIntervalMinutes,
-                    min: 5,
-                    max: 1440,
-                    suffix: '分钟',
-                    onChanged: (value) {
-                      controller.updateSettings(
-                        settings.copyWith(backupAutoSyncIntervalMinutes: value),
-                      );
-                    },
-                  ),
-              ],
-            ),
-          ),
-        ),
         _LocalBackupCard(controller: controller, settings: settings),
       ],
     );
-  }
-
-  Future<void> _confirmCloudRestore(
-    BuildContext context,
-    AppController controller,
-  ) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('从云端恢复'),
-          content: const Text('将用云端同步数据覆盖当前本地数据，是否继续？'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('继续恢复'),
-            ),
-          ],
-        );
-      },
-    );
-    if (confirmed == true) {
-      await controller.restoreFromWebDav();
-    }
   }
 }
 
@@ -566,7 +415,7 @@ class _LocalBackupCardState extends State<_LocalBackupCard> {
       builder: (context) {
         return AlertDialog(
           title: const Text('从本地恢复'),
-          content: const Text('将用所选同步文件覆盖当前数据，是否继续？'),
+          content: const Text('将用所选备份文件覆盖当前数据，是否继续？'),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
@@ -590,7 +439,7 @@ class _LocalBackupCardState extends State<_LocalBackupCard> {
       }
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(const SnackBar(content: Text('读取同步文件失败')));
+        ..showSnackBar(const SnackBar(content: Text('读取备份文件失败')));
       return;
     }
     await widget.controller.restoreFromLocalJson(raw);
@@ -618,7 +467,7 @@ class _LocalBackupCardState extends State<_LocalBackupCard> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    '本地同步',
+                    '本地备份',
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w600,
                     ),
@@ -675,7 +524,7 @@ class _LocalBackupCardState extends State<_LocalBackupCard> {
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               secondary: const Icon(Icons.autorenew),
-              title: const Text('定时本地同步'),
+              title: const Text('定时本地备份'),
               subtitle: settings.localBackupAutoEnabled
                   ? Text('每 ${settings.localBackupAutoIntervalMinutes} 分钟同步一次')
                   : const Text('关闭后仅手动同步'),
@@ -941,144 +790,6 @@ class _AppearanceSettingsContent extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _WebDavSettingsContent extends StatefulWidget {
-  const _WebDavSettingsContent();
-
-  @override
-  State<_WebDavSettingsContent> createState() => _WebDavSettingsContentState();
-}
-
-class _WebDavSettingsContentState extends State<_WebDavSettingsContent> {
-  late final TextEditingController _endpointController;
-  late final TextEditingController _usernameController;
-  late final TextEditingController _passwordController;
-  late final TextEditingController _remotePathController;
-
-  @override
-  void initState() {
-    super.initState();
-    final settings = AppScope.read(context).data.settings.webDav;
-    _endpointController = TextEditingController(text: settings.endpoint);
-    _usernameController = TextEditingController(text: settings.username);
-    _passwordController = TextEditingController(text: settings.password);
-    _remotePathController = TextEditingController(text: settings.remotePath);
-  }
-
-  @override
-  void dispose() {
-    _endpointController.dispose();
-    _usernameController.dispose();
-    _passwordController.dispose();
-    _remotePathController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final controller = AppScope.read(context);
-    final settings = controller.data.settings;
-
-    return _SettingsSubPageScaffold(
-      children: [
-        _SettingsSection(
-          icon: Icons.cloud_outlined,
-          title: '连接信息',
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(6, 8, 6, 6),
-              child: TextField(
-                controller: _endpointController,
-                decoration: const InputDecoration(
-                  prefixIcon: Icon(Icons.link),
-                  labelText: '服务地址',
-                  border: OutlineInputBorder(),
-                ),
-                keyboardType: TextInputType.url,
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(6, 8, 6, 6),
-              child: TextField(
-                controller: _usernameController,
-                decoration: const InputDecoration(
-                  prefixIcon: Icon(Icons.person_outline),
-                  labelText: '用户名',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(6, 8, 6, 6),
-              child: TextField(
-                controller: _passwordController,
-                decoration: const InputDecoration(
-                  prefixIcon: Icon(Icons.key_outlined),
-                  labelText: '密码',
-                  border: OutlineInputBorder(),
-                ),
-                obscureText: true,
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(6, 8, 6, 10),
-              child: TextField(
-                controller: _remotePathController,
-                decoration: const InputDecoration(
-                  prefixIcon: Icon(Icons.folder_outlined),
-                  labelText: '远端路径',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-            ),
-          ],
-        ),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(18),
-            child: Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              children: [
-                FilledButton.icon(
-                  onPressed: _saveWebDav,
-                  icon: const Icon(Icons.save_outlined),
-                  label: const Text('保存同步设置'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: settings.webDav.isConfigured && !controller.syncing
-                      ? controller.syncNow
-                      : null,
-                  icon: controller.syncing
-                      ? const SizedBox.square(
-                          dimension: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.sync),
-                  label: const Text('同步'),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  void _saveWebDav() {
-    final controller = AppScope.read(context);
-    controller.updateWebDav(
-      WebDavSettings(
-        endpoint: _endpointController.text.trim(),
-        username: _usernameController.text.trim(),
-        password: _passwordController.text,
-        remotePath: _remotePathController.text.trim().isEmpty
-            ? 'tomato_clock/backup.json'
-            : _remotePathController.text.trim(),
-      ),
     );
   }
 }

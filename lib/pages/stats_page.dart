@@ -185,7 +185,7 @@ class _SessionDetail extends StatelessWidget {
                           _DetailRow(
                             icon: Icons.check_outlined,
                             label: '状态',
-                            value: session.completed ? '完成' : '已停止',
+                            value: session.completed ? '完成' : '未完成',
                           ),
                         ],
                       ),
@@ -359,7 +359,7 @@ class _RecentSessions extends StatelessWidget {
               leading: const Icon(Icons.local_fire_department_outlined),
               title: Text(formatDateTime(session.endedAt)),
               subtitle: Text(
-                '${formatHours(session.focusedSeconds)} · ${session.completed ? '完成' : '已停止'}',
+                '${formatHours(session.focusedSeconds)} · ${session.completed ? '完成' : '未完成'}',
               ),
               trailing: const Icon(Icons.chevron_right),
               onTap: onTap != null ? () => onTap!(session) : null,

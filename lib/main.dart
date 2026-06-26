@@ -87,7 +87,6 @@ class _TomatoAppState extends State<TomatoApp> {
 
 const localBackupSuccessMessageToken = 'LOCAL_BACKUP_SUCCESS';
 const localRestoreSuccessMessageToken = 'LOCAL_RESTORE_SUCCESS';
-const cloudRestoreSuccessMessageToken = 'CLOUD_RESTORE_SUCCESS';
 
 ThemeData _buildAppTheme(Brightness brightness) {
   final baseScheme = ColorScheme.fromSeed(
@@ -198,7 +197,9 @@ class _TomatoHomePageState extends State<TomatoHomePage>
   Timer? _pipChromeRestoreTimer;
   Timer? _pipReturnTimer;
   int _selectedIndex = 0;
-  double _statsDragDistance = 0;
+  bool _statsSheetMounted = false;
+  bool _statsSheetVisible = false;
+  double _statsSheetDragDistance = 0;
   bool _settingsSubPageOpen = false;
   bool _statsSubPageOpen = false;
   bool _chromeHidden = false;
@@ -281,7 +282,6 @@ class _TomatoHomePageState extends State<TomatoHomePage>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.hidden ||
         state == AppLifecycleState.paused) {
-      unawaited(_controller?.syncBeforeBackground() ?? Future<void>.value());
       final controller = _controller;
       if (controller != null &&
           controller.data.settings.pictureInPictureEnabled) {
@@ -318,9 +318,9 @@ class _TomatoHomePageState extends State<TomatoHomePage>
           context: context,
           builder: (context) {
             return AlertDialog(
-              title: const Text('本地同步完成'),
+              title: const Text('本地备份完成'),
               content: Text(
-                path.isEmpty ? '本地同步文件已保存。' : '本地同步文件已保存到：\n$path',
+                path.isEmpty ? '本地备份文件已保存。' : '本地备份文件已保存到：\n$path',
                 maxLines: 4,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -343,20 +343,7 @@ class _TomatoHomePageState extends State<TomatoHomePage>
         }
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
-          ..showSnackBar(const SnackBar(content: Text('本地恢复完成，当前数据已替换为同步内容')));
-      });
-      return;
-    }
-    if (message == cloudRestoreSuccessMessageToken) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) {
-          return;
-        }
-        ScaffoldMessenger.of(context)
-          ..hideCurrentSnackBar()
-          ..showSnackBar(
-            const SnackBar(content: Text('云端恢复完成，当前数据已替换为远端同步内容')),
-          );
+          ..showSnackBar(const SnackBar(content: Text('本地恢复完成，当前数据已替换为备份内容')));
       });
       return;
     }
@@ -430,9 +417,16 @@ class _TomatoHomePageState extends State<TomatoHomePage>
     );
 
     return PopScope<void>(
-      canPop: _selectedIndex == 0 || _settingsSubPageOpen || _statsSubPageOpen,
+      canPop:
+          (_selectedIndex == 0 && !_statsSheetVisible) ||
+          _settingsSubPageOpen ||
+          _statsSubPageOpen,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) {
+          return;
+        }
+        if (_statsSheetVisible) {
+          _closeStatsSheet();
           return;
         }
         if (_settingsSubPageOpen || _statsSubPageOpen) {
@@ -472,17 +466,43 @@ class _TomatoHomePageState extends State<TomatoHomePage>
                             : SafeArea(
                                 top: true,
                                 bottom: false,
-                                child: _pageTransition(
-                                  controller: controller,
-                                  data: data,
-                                  quiet: hideChrome,
-                                  oledMode: _oledMode,
-                                  inPictureInPicture: false,
-                                  expandFromPictureInPicture:
-                                      _returningFromPictureInPicture,
-                                ),
+                                child: _selectedIndex == 0
+                                    ? _TimerDeck(
+                                        active: _statsSheetVisible,
+                                        background: normalPageBackground,
+                                        child: _pageTransition(
+                                          controller: controller,
+                                          data: data,
+                                          quiet: hideChrome,
+                                          oledMode: _oledMode,
+                                          inPictureInPicture: false,
+                                          expandFromPictureInPicture:
+                                              _returningFromPictureInPicture,
+                                        ),
+                                      )
+                                    : _pageTransition(
+                                        controller: controller,
+                                        data: data,
+                                        quiet: hideChrome,
+                                        oledMode: _oledMode,
+                                        inPictureInPicture: false,
+                                        expandFromPictureInPicture:
+                                            _returningFromPictureInPicture,
+                                      ),
                               ),
                       ),
+                      if (!pipPreview &&
+                          _selectedIndex == 0 &&
+                          _statsSheetMounted)
+                        _StatsSheetOverlay(
+                          visible: _statsSheetVisible,
+                          data: data,
+                          onClose: _closeStatsSheet,
+                          onAnimationEnd: _handleStatsSheetAnimationEnd,
+                          onDragStart: _handleStatsSheetDragStart,
+                          onDragUpdate: _handleStatsSheetDragUpdate,
+                          onSubPageOpenChanged: _handleStatsSubPageChanged,
+                        ),
                     ],
                   ),
           ),
@@ -562,33 +582,11 @@ class _TomatoHomePageState extends State<TomatoHomePage>
           inPictureInPicture: inPictureInPicture,
           expandFromPictureInPicture: expandFromPictureInPicture,
           onRequestQuiet: _requestQuiet,
-          onOpenStats: () => _selectPage(1),
+          onOpenStats: _openStatsSheet,
           onOpenSettings: () => _selectPage(2),
           onToggleKeepScreenOn: _toggleKeepScreenOn,
           onTogglePictureInPicture: _togglePictureInPicture,
           onUiHaptic: _emitUiHaptic,
-        );
-      case 1:
-        return Listener(
-          behavior: HitTestBehavior.translucent,
-          onPointerDown: (_) => _statsDragDistance = 0,
-          onPointerMove: (event) {
-            if (_selectedIndex != 1) {
-              return;
-            }
-            _statsDragDistance += event.delta.dy;
-            if (_statsDragDistance < 0) {
-              _statsDragDistance = 0;
-            }
-            if (_statsDragDistance > 72) {
-              _statsDragDistance = 0;
-              _selectPage(0);
-            }
-          },
-          child: StatsPage(
-            data: data,
-            onSubPageOpenChanged: _handleStatsSubPageChanged,
-          ),
         );
       case 2:
         return SettingsPage(
@@ -605,7 +603,7 @@ class _TomatoHomePageState extends State<TomatoHomePage>
           inPictureInPicture: inPictureInPicture,
           expandFromPictureInPicture: expandFromPictureInPicture,
           onRequestQuiet: _requestQuiet,
-          onOpenStats: () => _selectPage(1),
+          onOpenStats: _openStatsSheet,
           onOpenSettings: () => _selectPage(2),
           onToggleKeepScreenOn: _toggleKeepScreenOn,
           onTogglePictureInPicture: _togglePictureInPicture,
@@ -621,17 +619,78 @@ class _TomatoHomePageState extends State<TomatoHomePage>
     _emitUiHaptic();
     setState(() {
       _selectedIndex = index;
-      _statsDragDistance = 0;
+      _statsSheetDragDistance = 0;
+      _statsSheetVisible = false;
+      _statsSheetMounted = false;
+      _statsSubPageOpen = false;
       _oledMode = false;
       if (index != 2) {
         _settingsSubPageOpen = false;
       }
-      if (index != 1) {
-        _statsSubPageOpen = false;
-      }
       _chromeHidden = false;
     });
     _syncIdleChrome();
+  }
+
+  void _openStatsSheet() {
+    final controller = _controller;
+    if (controller == null ||
+        _selectedIndex != 0 ||
+        _statsSheetVisible ||
+        controller.data.timer.phase == TimerPhase.running) {
+      return;
+    }
+    _emitUiHaptic();
+    _idleChromeTimer?.cancel();
+    _idleChromeTimer = null;
+    _cancelOledIdleTimer();
+    setState(() {
+      _statsSheetMounted = true;
+      _statsSheetVisible = true;
+      _statsSheetDragDistance = 0;
+      _chromeHidden = false;
+      _oledMode = false;
+    });
+    _syncIdleChrome();
+  }
+
+  void _closeStatsSheet() {
+    if (!_statsSheetMounted) {
+      return;
+    }
+    _emitUiHaptic();
+    setState(() {
+      _statsSheetVisible = false;
+      _statsSheetDragDistance = 0;
+      _statsSubPageOpen = false;
+    });
+    _syncIdleChrome(restart: true);
+  }
+
+  void _handleStatsSheetAnimationEnd() {
+    if (!mounted || _statsSheetVisible || !_statsSheetMounted) {
+      return;
+    }
+    setState(() {
+      _statsSheetMounted = false;
+    });
+  }
+
+  void _handleStatsSheetDragStart() {
+    _statsSheetDragDistance = 0;
+  }
+
+  void _handleStatsSheetDragUpdate(double delta) {
+    if (!_statsSheetVisible) {
+      return;
+    }
+    _statsSheetDragDistance += delta;
+    if (_statsSheetDragDistance < 0) {
+      _statsSheetDragDistance = 0;
+    }
+    if (_statsSheetDragDistance > 72) {
+      _closeStatsSheet();
+    }
   }
 
   void _toggleKeepScreenOn() {
@@ -994,5 +1053,197 @@ class _TomatoHomePageState extends State<TomatoHomePage>
       return;
     }
     await PlatformControls.vibrate(durationMs: 30, amplitude: 150);
+  }
+}
+
+class _TimerDeck extends StatelessWidget {
+  const _TimerDeck({
+    required this.active,
+    required this.background,
+    required this.child,
+  });
+
+  final bool active;
+  final Color background;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final motionDisabled = MediaQuery.disableAnimationsOf(context);
+    return AnimatedScale(
+      scale: active ? 0.94 : 1,
+      duration: motionDisabled
+          ? const Duration(milliseconds: 80)
+          : const Duration(milliseconds: 260),
+      curve: Curves.easeOutCubic,
+      child: AnimatedContainer(
+        duration: motionDisabled
+            ? const Duration(milliseconds: 80)
+            : const Duration(milliseconds: 260),
+        curve: Curves.easeOutCubic,
+        margin: EdgeInsets.fromLTRB(0, 0, 0, active ? 16 : 0),
+        decoration: BoxDecoration(
+          color: background,
+          borderRadius: BorderRadius.circular(active ? 28 : 0),
+          boxShadow: active
+              ? [
+                  BoxShadow(
+                    color: Colors.black.withAlpha(34),
+                    blurRadius: 28,
+                    offset: const Offset(0, 14),
+                  ),
+                ]
+              : null,
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: child,
+      ),
+    );
+  }
+}
+
+// ponytail: mask stays visible until sheet fully slides off screen
+class _StatsSheetOverlay extends StatelessWidget {
+  const _StatsSheetOverlay({
+    required this.visible,
+    required this.data,
+    required this.onClose,
+    required this.onAnimationEnd,
+    required this.onDragStart,
+    required this.onDragUpdate,
+    required this.onSubPageOpenChanged,
+  });
+
+  final bool visible;
+  final TomatoData data;
+  final VoidCallback onClose;
+  final VoidCallback onAnimationEnd;
+  final VoidCallback onDragStart;
+  final ValueChanged<double> onDragUpdate;
+  final ValueChanged<bool> onSubPageOpenChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final motionDisabled = MediaQuery.disableAnimationsOf(context);
+    final duration = motionDisabled
+        ? const Duration(milliseconds: 80)
+        : const Duration(milliseconds: 280);
+    final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
+
+    return Positioned.fill(
+      child: IgnorePointer(
+        ignoring: !visible,
+        child: Stack(
+          children: [
+            AnimatedOpacity(
+              opacity: visible ? 1 : 0,
+              duration: Duration.zero,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: onClose,
+                child: ColoredBox(color: Colors.black.withAlpha(54)),
+              ),
+            ),
+            Align(
+              alignment: Alignment.bottomCenter,
+              child: AnimatedSlide(
+                offset: visible ? Offset.zero : const Offset(0, 1),
+                duration: duration,
+                curve: visible ? Curves.easeOutCubic : Curves.easeInCubic,
+                onEnd: onAnimationEnd,
+                child: SafeArea(
+                  top: false,
+                  minimum: EdgeInsets.only(bottom: bottomInset > 0 ? 0 : 10),
+                  child: FractionallySizedBox(
+                    heightFactor: 0.88,
+                    alignment: Alignment.bottomCenter,
+                    child: Material(
+                      color: scheme.surface,
+                      elevation: 0,
+                      borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(24),
+                      ),
+                      clipBehavior: Clip.antiAlias,
+                      child: Column(
+                        children: [
+                          GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onVerticalDragStart: (_) => onDragStart(),
+                            onVerticalDragUpdate: (details) {
+                              onDragUpdate(details.primaryDelta ?? 0);
+                            },
+                            onVerticalDragEnd: (details) {
+                              final velocity = details.primaryVelocity ?? 0;
+                              if (velocity > 520) {
+                                onClose();
+                              }
+                            },
+                            child: _StatsSheetHeader(onClose: onClose),
+                          ),
+                          Expanded(
+                            child: StatsPage(
+                              data: data,
+                              onSubPageOpenChanged: onSubPageOpenChanged,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _StatsSheetHeader extends StatelessWidget {
+  const _StatsSheetHeader({required this.onClose});
+
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
+      child: Column(
+        children: [
+          Container(
+            width: 42,
+            height: 4,
+            decoration: BoxDecoration(
+              color: scheme.outlineVariant,
+              borderRadius: BorderRadius.circular(999),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              const SizedBox(width: 48),
+              Expanded(
+                child: Text(
+                  '统计',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              IconButton(
+                tooltip: '关闭',
+                icon: const Icon(Icons.close),
+                onPressed: onClose,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 }

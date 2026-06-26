@@ -98,6 +98,23 @@ class PlatformControls {
     await _invokeSilently('openNotificationSettings');
   }
 
+  static Future<bool> requestLocationPermission() async {
+    try {
+      final granted = await _channel.invokeMethod<bool>(
+        'requestLocationPermission',
+      );
+      return granted ?? false;
+    } on MissingPluginException {
+      return false;
+    } on PlatformException {
+      return false;
+    }
+  }
+
+  static Future<void> openLocationSettings() async {
+    await _invokeSilently('openLocationSettings');
+  }
+
   static Future<void> playCompletionSound() async {
     try {
       final played =

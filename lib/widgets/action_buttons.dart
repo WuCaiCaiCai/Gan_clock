@@ -34,6 +34,7 @@ class TimerActions extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final running = phase == TimerPhase.running;
+    final paused = phase == TimerPhase.paused;
     final canSkip = running && mode != TimerMode.focus;
     final scheme = Theme.of(context).colorScheme;
     final accent = running ? scheme.primary : scheme.outlineVariant;
@@ -108,7 +109,13 @@ class TimerActions extends StatelessWidget {
                             size: 20,
                           ),
                         ),
-                        label: Text(running ? '暂停' : '开始'),
+                        label: Text(
+                          running
+                              ? '暂停'
+                              : paused
+                              ? '继续'
+                              : '开始',
+                        ),
                       ),
                     const SizedBox(width: 6),
                     _ActionIconButton(

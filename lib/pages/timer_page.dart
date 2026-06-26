@@ -55,16 +55,16 @@ class TimerPage extends StatelessWidget {
       builder: (context, constraints) {
         final controlsBottom = 28.0 + MediaQuery.paddingOf(context).bottom;
         final bottomReserve = controlsBottom + 104;
-        final ambientTop = 12.0 + MediaQuery.paddingOf(context).top;
+        // ponytail: push info closer to top for punch-hole screens
+        final ambientTop = (MediaQuery.paddingOf(context).top - 8.0).clamp(0.0, 50.0);
         final quoteTop = (constraints.maxHeight * 0.072).clamp(42.0, 76.0);
-        final contentOffset = (constraints.maxHeight * 0.012).clamp(8.0, 18.0);
         final maxRingDimension =
             math.min(
               344.0,
               math.max(216.0, constraints.maxHeight - quoteTop - bottomReserve),
             ) *
             0.94;
-        final centerY = constraints.maxHeight / 2 + contentOffset;
+        final centerY = constraints.maxHeight / 2;
         final statusTop = math
             .min(
               centerY + maxRingDimension / 2 + 14,
@@ -101,17 +101,14 @@ class TimerPage extends StatelessWidget {
                 ),
               ),
               Center(
-                child: Transform.translate(
-                  offset: Offset(0, contentOffset),
-                  child: _PipReturnScale(
-                    active: expandFromPictureInPicture,
-                    child: _TimerFace(
-                      oledMode: oledMode,
-                      child: TimerProgressRing(
-                        snapshot: timer,
-                        maxDimension: maxRingDimension,
-                        showInnerStatus: false,
-                      ),
+                child: _PipReturnScale(
+                  active: expandFromPictureInPicture,
+                  child: _TimerFace(
+                    oledMode: oledMode,
+                    child: TimerProgressRing(
+                      snapshot: timer,
+                      maxDimension: maxRingDimension,
+                      showInnerStatus: false,
                     ),
                   ),
                 ),

@@ -68,10 +68,7 @@ class AppStorage implements TomatoStore {
 
     final backupDirectory = configured != null && configured.isNotEmpty
         ? Directory(configured)
-        : Directory(
-            '${(await _resolveDataDirectory()).path}'
-            '${Platform.pathSeparator}local_backups',
-          );
+        : await _resolveDefaultBackupDirectory();
     await backupDirectory.create(recursive: true);
     final basePath =
         '${backupDirectory.path}${Platform.pathSeparator}'
@@ -161,6 +158,23 @@ class AppStorage implements TomatoStore {
       }
     }
     return Directory.systemTemp.createTemp('tomato_clock_');
+  }
+
+  Future<Directory> _resolveDefaultBackupDirectory() async {
+    // ponytail: desktop defaults to Documents, Android needs SAF picker
+    if (Platform.isAndroid || Platform.isIOS) {
+      throw const FileSystemException(
+        '请通过设置页选择备份目录',
+      );
+    }
+    final home =
+        Platform.environment['HOME'] ??
+        Platform.environment['USERPROFILE'] ??
+        Directory.current.path;
+    return Directory(
+      '${home.trim()}${Platform.pathSeparator}Documents'
+      '${Platform.pathSeparator}GanClockBackups',
+    );
   }
 
   Future<bool> _canUseDirectory(Directory directory) async {

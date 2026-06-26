@@ -7,38 +7,29 @@ import 'completion_feedback.dart';
 import 'models.dart';
 import 'storage.dart';
 import 'timer_engine.dart';
-import 'webdav_service.dart';
 
 class AppController extends ChangeNotifier {
   AppController({
     TomatoStore? storage,
-    WebDavService? webDavService,
     CompletionFeedback completionFeedback = const SystemCompletionFeedback(),
     TomatoTimerEngine timerEngine = const TomatoTimerEngine(),
-  }) : _webDavService = webDavService ?? WebDavService(),
-       _completionFeedback = completionFeedback,
+  }) : _completionFeedback = completionFeedback,
        _timerEngine = timerEngine {
     _storage = storage ?? AppStorage();
   }
 
-  final WebDavService _webDavService;
   final CompletionFeedback _completionFeedback;
   final TomatoTimerEngine _timerEngine;
   late final TomatoStore _storage;
 
   TomatoData _data = TomatoData.initial();
   Timer? _ticker;
-  Timer? _autoSyncTimer;
   Timer? _localBackupTimer;
   Future<void> _saveQueue = Future<void>.value();
-  DateTime? _lastAutoSyncAttemptAt;
-  DateTime? _lastSyncAt;
-  String? _lastSyncError;
   DateTime? _lastLocalBackupAt;
   String? _lastLocalBackupPath;
   String? _lastLocalBackupError;
   bool _loading = true;
-  bool _syncing = false;
   bool _disposed = false;
   bool _saveErrorNotified = false;
   String? _message;
@@ -46,12 +37,6 @@ class AppController extends ChangeNotifier {
   TomatoData get data => _data;
 
   bool get loading => _loading;
-
-  bool get syncing => _syncing;
-
-  DateTime? get lastSyncAt => _lastSyncAt;
-
-  String? get lastSyncError => _lastSyncError;
 
   DateTime? get lastLocalBackupAt => _lastLocalBackupAt;
 
@@ -66,9 +51,9 @@ class AppController extends ChangeNotifier {
     }
     final path = _lastLocalBackupPath;
     if (path == null) {
-      return '本地同步尚未创建';
+      return '本地备份尚未创建';
     }
-    return '本地同步已保存 ${_formatDateTime(_lastLocalBackupAt!)} · $path';
+    return '本地备份已保存 ${_formatDateTime(_lastLocalBackupAt!)} · $path';
   }
 
   String _formatDateTime(DateTime value) {
@@ -102,7 +87,6 @@ class AppController extends ChangeNotifier {
     } finally {
       _loading = false;
       _restartTicker();
-      _restartAutoSyncTimer();
       _restartLocalBackupTimer();
       _notify();
     }
@@ -119,10 +103,6 @@ class AppController extends ChangeNotifier {
 
   Future<void> reset() async {
     await _replaceData(_timerEngine.reset(_data));
-  }
-
-  Future<void> stop() async {
-    await _replaceData(_timerEngine.stop(_data));
   }
 
   Future<void> skip() async {
@@ -149,17 +129,6 @@ class AppController extends ChangeNotifier {
     await _replaceData(_timerEngine.applySettings(_data, settings));
   }
 
-  Future<void> updateWebDav(WebDavSettings settings) async {
-    await updateSettings(_data.settings.copyWith(webDav: settings));
-    _message = 'WebDAV 设置已保存';
-    _notify();
-    unawaited(_autoSyncIfDue(force: true));
-  }
-
-  Future<void> syncNow() async {
-    await _syncNow(silent: false, force: true);
-  }
-
   Future<void> createLocalBackup({String? directory}) async {
     await _runLocalBackup(
       directory: directory,
@@ -176,51 +145,13 @@ class AppController extends ChangeNotifier {
       _data = ticked.data;
       await _saveData(_data);
       _restartTicker();
-      _restartAutoSyncTimer();
       _restartLocalBackupTimer();
       _message = 'LOCAL_RESTORE_SUCCESS';
     } on FormatException {
-      _message = '本地同步文件格式无效';
+      _message = '本地备份文件格式无效';
     } on Object {
       _message = '本地恢复失败';
     } finally {
-      _notify();
-    }
-  }
-
-  Future<void> restoreFromWebDav() async {
-    final settings = _data.settings.webDav;
-    if (!settings.isConfigured) {
-      _message = '请先配置 WebDAV';
-      _notify();
-      return;
-    }
-    if (_syncing) {
-      return;
-    }
-    _syncing = true;
-    _lastSyncError = null;
-    _notify();
-    try {
-      final remote = await _webDavService.download(settings);
-      final now = DateTime.now();
-      final ticked = _timerEngine.tick(remote, at: now);
-      _data = ticked.data;
-      await _saveData(_data);
-      _lastSyncAt = now;
-      _lastSyncError = null;
-      _message = 'CLOUD_RESTORE_SUCCESS';
-      _restartTicker();
-      _restartAutoSyncTimer();
-      _restartLocalBackupTimer();
-    } on WebDavException catch (error) {
-      _lastSyncError = error.message;
-      _message = error.message;
-    } on Object {
-      _lastSyncError = '云端恢复失败';
-      _message = '云端恢复失败';
-    } finally {
-      _syncing = false;
       _notify();
     }
   }
@@ -252,72 +183,13 @@ class AppController extends ChangeNotifier {
         _message = 'LOCAL_BACKUP_SUCCESS';
       }
     } on Object {
-      _lastLocalBackupError = '本地同步失败，请检查目录是否可写';
+      _lastLocalBackupError = '本地备份失败，请检查目录是否可写';
       if (manual) {
         _message = _lastLocalBackupError;
       }
     } finally {
       _notify();
     }
-  }
-
-  Future<void> syncBeforeBackground() async {
-    if (!_data.settings.backupAutoSyncEnabled) {
-      return;
-    }
-    await _syncNow(silent: true, force: true);
-  }
-
-  Future<void> _syncNow({required bool silent, required bool force}) async {
-    if (!_data.settings.webDav.isConfigured || _syncing) {
-      return;
-    }
-    if (!force && !_data.settings.backupAutoSyncEnabled) {
-      return;
-    }
-    final attemptedAt = DateTime.now();
-    _lastAutoSyncAttemptAt = attemptedAt;
-    _syncing = true;
-    _lastSyncError = null;
-    _notify();
-    try {
-      final merged = await _webDavService.sync(_data.settings.webDav, _data);
-      _data = merged;
-      await _saveData(_data);
-      _lastSyncAt = attemptedAt;
-      _lastSyncError = null;
-    } on WebDavException catch (error) {
-      _lastSyncError = error.message;
-      if (!silent) {
-        _message = error.message;
-      }
-    } on Object {
-      _lastSyncError = 'WebDAV 同步失败';
-      if (!silent) {
-        _message = 'WebDAV 同步失败';
-      }
-    } finally {
-      _syncing = false;
-      _restartTicker();
-      _restartAutoSyncTimer();
-      _notify();
-    }
-  }
-
-  Future<void> _autoSyncIfDue({bool force = false}) async {
-    final settings = _data.settings;
-    if (!settings.backupAutoSyncEnabled || !settings.webDav.isConfigured) {
-      return;
-    }
-    final now = DateTime.now();
-    final interval = Duration(minutes: settings.backupAutoSyncIntervalMinutes);
-    final lastAttempt = _lastAutoSyncAttemptAt;
-    if (!force &&
-        lastAttempt != null &&
-        now.difference(lastAttempt) < interval) {
-      return;
-    }
-    await _syncNow(silent: true, force: false);
   }
 
   void _tick() {
@@ -338,7 +210,6 @@ class AppController extends ChangeNotifier {
     }
     _data = next;
     _restartTicker();
-    _restartAutoSyncTimer();
     _restartLocalBackupTimer();
     _notify();
     await _saveData(_data);
@@ -350,19 +221,6 @@ class AppController extends ChangeNotifier {
     if (_data.timer.phase == TimerPhase.running) {
       _ticker = Timer.periodic(const Duration(seconds: 1), (_) => _tick());
     }
-  }
-
-  void _restartAutoSyncTimer() {
-    _autoSyncTimer?.cancel();
-    _autoSyncTimer = null;
-    final settings = _data.settings;
-    if (!settings.backupAutoSyncEnabled || !settings.webDav.isConfigured) {
-      return;
-    }
-    _autoSyncTimer = Timer.periodic(
-      Duration(minutes: settings.backupAutoSyncIntervalMinutes),
-      (_) => unawaited(_autoSyncIfDue(force: true)),
-    );
   }
 
   void _restartLocalBackupTimer() {
@@ -436,7 +294,6 @@ class AppController extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     _ticker?.cancel();
-    _autoSyncTimer?.cancel();
     _localBackupTimer?.cancel();
     super.dispose();
   }

@@ -78,57 +78,6 @@ extension AppThemeModeLabels on AppThemeMode {
   }
 }
 
-class WebDavSettings {
-  const WebDavSettings({
-    this.endpoint = '',
-    this.username = '',
-    this.password = '',
-    this.remotePath = 'tomato_clock/backup.json',
-  });
-
-  final String endpoint;
-  final String username;
-  final String password;
-  final String remotePath;
-
-  bool get isConfigured => endpoint.trim().isNotEmpty;
-
-  WebDavSettings copyWith({
-    String? endpoint,
-    String? username,
-    String? password,
-    String? remotePath,
-  }) {
-    return WebDavSettings(
-      endpoint: endpoint ?? this.endpoint,
-      username: username ?? this.username,
-      password: password ?? this.password,
-      remotePath: remotePath ?? this.remotePath,
-    );
-  }
-
-  Map<String, Object?> toJson() {
-    return {
-      'endpoint': endpoint,
-      'username': username,
-      'password': password,
-      'remotePath': remotePath,
-    };
-  }
-
-  factory WebDavSettings.fromJson(Object? value) {
-    if (value is! Map<String, Object?>) {
-      return const WebDavSettings();
-    }
-    return WebDavSettings(
-      endpoint: value['endpoint'] as String? ?? '',
-      username: value['username'] as String? ?? '',
-      password: value['password'] as String? ?? '',
-      remotePath: value['remotePath'] as String? ?? 'tomato_clock/backup.json',
-    );
-  }
-}
-
 class AppSettings {
   const AppSettings({
     this.focusMinutes = 25,
@@ -142,13 +91,10 @@ class AppSettings {
     this.pictureInPictureEnabled = true,
     this.completionSoundEnabled = false,
     this.completionHapticsEnabled = true,
-    this.backupAutoSyncEnabled = true,
-    this.backupAutoSyncIntervalMinutes = 30,
     this.localBackupDirectory = '',
     this.localBackupAutoEnabled = false,
     this.localBackupAutoIntervalMinutes = 60,
     this.localBackupKeepCount = 5,
-    this.webDav = const WebDavSettings(),
   });
 
   final int focusMinutes;
@@ -162,13 +108,10 @@ class AppSettings {
   final bool pictureInPictureEnabled;
   final bool completionSoundEnabled;
   final bool completionHapticsEnabled;
-  final bool backupAutoSyncEnabled;
-  final int backupAutoSyncIntervalMinutes;
   final String localBackupDirectory;
   final bool localBackupAutoEnabled;
   final int localBackupAutoIntervalMinutes;
   final int localBackupKeepCount;
-  final WebDavSettings webDav;
 
   AppSettings copyWith({
     int? focusMinutes,
@@ -182,13 +125,10 @@ class AppSettings {
     bool? pictureInPictureEnabled,
     bool? completionSoundEnabled,
     bool? completionHapticsEnabled,
-    bool? backupAutoSyncEnabled,
-    int? backupAutoSyncIntervalMinutes,
     String? localBackupDirectory,
     bool? localBackupAutoEnabled,
     int? localBackupAutoIntervalMinutes,
     int? localBackupKeepCount,
-    WebDavSettings? webDav,
   }) {
     return AppSettings(
       focusMinutes: focusMinutes ?? this.focusMinutes,
@@ -206,17 +146,12 @@ class AppSettings {
           completionSoundEnabled ?? this.completionSoundEnabled,
       completionHapticsEnabled:
           completionHapticsEnabled ?? this.completionHapticsEnabled,
-      backupAutoSyncEnabled:
-          backupAutoSyncEnabled ?? this.backupAutoSyncEnabled,
-      backupAutoSyncIntervalMinutes:
-          backupAutoSyncIntervalMinutes ?? this.backupAutoSyncIntervalMinutes,
       localBackupDirectory: localBackupDirectory ?? this.localBackupDirectory,
       localBackupAutoEnabled:
           localBackupAutoEnabled ?? this.localBackupAutoEnabled,
       localBackupAutoIntervalMinutes:
           localBackupAutoIntervalMinutes ?? this.localBackupAutoIntervalMinutes,
       localBackupKeepCount: localBackupKeepCount ?? this.localBackupKeepCount,
-      webDav: webDav ?? this.webDav,
     );
   }
 
@@ -233,13 +168,10 @@ class AppSettings {
       'pictureInPictureEnabled': pictureInPictureEnabled,
       'completionSoundEnabled': completionSoundEnabled,
       'completionHapticsEnabled': completionHapticsEnabled,
-      'backupAutoSyncEnabled': backupAutoSyncEnabled,
-      'backupAutoSyncIntervalMinutes': backupAutoSyncIntervalMinutes,
       'localBackupDirectory': localBackupDirectory,
       'localBackupAutoEnabled': localBackupAutoEnabled,
       'localBackupAutoIntervalMinutes': localBackupAutoIntervalMinutes,
       'localBackupKeepCount': localBackupKeepCount,
-      'webDav': webDav.toJson(),
     };
   }
 
@@ -269,13 +201,6 @@ class AppSettings {
       completionSoundEnabled: value['completionSoundEnabled'] as bool? ?? false,
       completionHapticsEnabled:
           value['completionHapticsEnabled'] as bool? ?? true,
-      backupAutoSyncEnabled: value['backupAutoSyncEnabled'] as bool? ?? true,
-      backupAutoSyncIntervalMinutes: _boundedInt(
-        value['backupAutoSyncIntervalMinutes'],
-        5,
-        1440,
-        30,
-      ),
       localBackupDirectory: value['localBackupDirectory'] as String? ?? '',
       localBackupAutoEnabled: value['localBackupAutoEnabled'] as bool? ?? false,
       localBackupAutoIntervalMinutes: _boundedInt(
@@ -290,7 +215,6 @@ class AppSettings {
         50,
         5,
       ),
-      webDav: WebDavSettings.fromJson(value['webDav']),
     );
   }
 }
@@ -500,33 +424,6 @@ class TomatoData {
     return result;
   }
 
-  TomatoData mergeWith(TomatoData remote) {
-    final byId = <String, FocusSession>{};
-    for (final session in [...sessions, ...remote.sessions]) {
-      if (session.id.isNotEmpty) {
-        byId[session.id] = session;
-      }
-    }
-    final mergedSessions = byId.values.toList()
-      ..sort((a, b) => b.endedAt.compareTo(a.endedAt));
-    final remoteIsNewer = remote.updatedAt.isAfter(updatedAt);
-    final useRemoteTimer =
-        remote.timer.isActive && !timer.isActive ||
-        (remote.timer.isActive == timer.isActive && remoteIsNewer);
-    final mergedTimer = useRemoteTimer ? remote.timer : timer;
-    final mergedCycleCount = useRemoteTimer
-        ? remote.focusCycleCount
-        : focusCycleCount;
-    final newestSettings = remoteIsNewer ? remote.settings : settings;
-    return copyWith(
-      settings: newestSettings,
-      sessions: mergedSessions,
-      timer: mergedTimer,
-      focusCycleCount: mergedCycleCount,
-      updatedAt: remoteIsNewer ? remote.updatedAt : updatedAt,
-    );
-  }
-
   static const currentSchemaVersion = 1;
 
   Map<String, Object?> toJson() {
@@ -535,6 +432,14 @@ class TomatoData {
       'updatedAt': updatedAt.toUtc().toIso8601String(),
       'settings': settings.toJson(),
       'sessions': sessions.map((session) => session.toJson()).toList(),
+      'stats': {
+        'totalFocusSeconds': totalFocusSeconds,
+        'focusSecondsByDay': focusSecondsByDay(),
+        'sessionCount': sessions.length,
+        'recordableSessionCount': sessions
+            .where((session) => session.isRecordable)
+            .length,
+      },
       'timer': timer.toJson(),
       'focusCycleCount': focusCycleCount,
     };

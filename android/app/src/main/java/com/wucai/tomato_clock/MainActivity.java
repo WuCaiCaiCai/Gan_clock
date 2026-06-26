@@ -1,5 +1,6 @@
 package com.wucai.tomato_clock;
 
+import android.Manifest;
 import android.app.PictureInPictureParams;
 import android.media.AudioAttributes;
 import android.media.Ringtone;
@@ -52,6 +53,11 @@ public class MainActivity extends FlutterFragmentActivity {
                     new ActivityResultContracts.RequestPermission(),
                     this::handleNotificationPermissionResult
             );
+    private final ActivityResultLauncher<String> requestLocationPermissionLauncher =
+            registerForActivityResult(
+                    new ActivityResultContracts.RequestPermission(),
+                    this::handleLocationPermissionResult
+            );
     private final ActivityResultLauncher<Intent> pickDirectoryLauncher =
             registerForActivityResult(
                     new ActivityResultContracts.StartActivityForResult(),
@@ -64,6 +70,7 @@ public class MainActivity extends FlutterFragmentActivity {
     private Result pendingPickResult;
     private Result pendingPickBackupFileResult;
     private Result pendingNotificationPermissionResult;
+    private Result pendingLocationPermissionResult;
 
     @Override
     public void configureFlutterEngine(@NonNull FlutterEngine flutterEngine) {
@@ -100,6 +107,13 @@ public class MainActivity extends FlutterFragmentActivity {
                     break;
                 case "openNotificationSettings":
                     openNotificationSettings();
+                    result.success(null);
+                    break;
+                case "requestLocationPermission":
+                    requestLocationPermission(result);
+                    break;
+                case "openLocationSettings":
+                    openLocationSettings();
                     result.success(null);
                     break;
                 case "enterPictureInPicture":
@@ -197,6 +211,43 @@ public class MainActivity extends FlutterFragmentActivity {
         }
         pendingNotificationPermissionResult.success(granted);
         pendingNotificationPermissionResult = null;
+    }
+
+    private void requestLocationPermission(Result result) {
+        if (ActivityCompat.checkSelfPermission(
+                this,
+                Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED) {
+            result.success(true);
+            return;
+        }
+        if (pendingLocationPermissionResult != null) {
+            result.error(
+                    "location_permission_in_progress",
+                    "Location permission request is already in progress.",
+                    null
+            );
+            return;
+        }
+        pendingLocationPermissionResult = result;
+        requestLocationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION);
+    }
+
+    private void handleLocationPermissionResult(boolean granted) {
+        if (pendingLocationPermissionResult == null) {
+            return;
+        }
+        pendingLocationPermissionResult.success(granted);
+        pendingLocationPermissionResult = null;
+    }
+
+    private void openLocationSettings() {
+        Intent intent = new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try {
+            startActivity(intent);
+        } catch (ActivityNotFoundException ignored) {
+        }
     }
 
     private void openNotificationSettings() {
