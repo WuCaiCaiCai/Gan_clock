@@ -7,6 +7,7 @@ import '../app_controller.dart';
 import '../hitokoto_service.dart';
 import '../models.dart';
 import '../utils.dart';
+import '../weather_service.dart';
 import '../widgets/action_buttons.dart';
 import '../widgets/chrome_fade.dart';
 import '../widgets/timer_ring.dart';
@@ -54,11 +55,9 @@ class TimerPage extends StatelessWidget {
       builder: (context, constraints) {
         final controlsBottom = 28.0 + MediaQuery.paddingOf(context).bottom;
         final bottomReserve = controlsBottom + 104;
-        final quoteTop = (constraints.maxHeight * 0.095).clamp(50.0, 90.0);
-        final contentOffset = (constraints.maxHeight * -0.04).clamp(
-          -42.0,
-          -26.0,
-        );
+        final ambientTop = 12.0 + MediaQuery.paddingOf(context).top;
+        final quoteTop = (constraints.maxHeight * 0.072).clamp(42.0, 76.0);
+        final contentOffset = (constraints.maxHeight * 0.012).clamp(8.0, 18.0);
         final maxRingDimension =
             math.min(
               344.0,
@@ -91,6 +90,16 @@ class TimerPage extends StatelessWidget {
           },
           child: Stack(
             children: [
+              Positioned(
+                left: 22,
+                right: 22,
+                top: ambientTop,
+                child: ChromeFade(
+                  hidden: pureDisplay,
+                  slideOffset: const Offset(0, -0.08),
+                  child: const _AmbientInfoLine(),
+                ),
+              ),
               Center(
                 child: Transform.translate(
                   offset: Offset(0, contentOffset),
@@ -162,6 +171,131 @@ class TimerPage extends StatelessWidget {
       },
     );
   }
+}
+
+class _AmbientInfoLine extends StatefulWidget {
+  const _AmbientInfoLine();
+
+  @override
+  State<_AmbientInfoLine> createState() => _AmbientInfoLineState();
+}
+
+class _AmbientInfoLineState extends State<_AmbientInfoLine> {
+  static const _weatherService = WeatherService();
+
+  WeatherSnapshot? _weather;
+  late DateTime _now;
+  Timer? _clockTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _now = DateTime.now();
+    _clockTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _now = DateTime.now();
+      });
+    });
+    unawaited(_loadWeather());
+  }
+
+  Future<void> _loadWeather() async {
+    final weather = await _weatherService.fetch();
+    if (!mounted || weather == null) {
+      return;
+    }
+    setState(() {
+      _weather = weather;
+    });
+  }
+
+  @override
+  void dispose() {
+    _clockTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final labelStyle = theme.textTheme.labelMedium?.copyWith(
+      color: scheme.onSurfaceVariant.withAlpha(210),
+      fontWeight: FontWeight.w600,
+      letterSpacing: 0,
+    );
+    return Row(
+      children: [
+        _AmbientChip(
+          icon: Icons.schedule,
+          label: _formatTime(_now),
+          style: labelStyle,
+        ),
+        const Spacer(),
+        Flexible(
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: _AmbientChip(
+              icon: Icons.wb_cloudy_outlined,
+              label: _weather?.label ?? '天气 --',
+              style: labelStyle,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _AmbientChip extends StatelessWidget {
+  const _AmbientChip({
+    required this.icon,
+    required this.label,
+    required this.style,
+  });
+
+  final IconData icon;
+  final String label;
+  final TextStyle? style;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: scheme.surface.withAlpha(118),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: scheme.outlineVariant.withAlpha(90)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 15, color: scheme.onSurfaceVariant),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: style,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+String _formatTime(DateTime value) {
+  final local = value.toLocal();
+  return '${local.hour.toString().padLeft(2, '0')}:'
+      '${local.minute.toString().padLeft(2, '0')}';
 }
 
 class _TimerFace extends StatelessWidget {

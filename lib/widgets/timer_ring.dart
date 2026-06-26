@@ -261,12 +261,19 @@ class _RingPainter extends CustomPainter {
       ..strokeWidth = stroke
       ..strokeCap = StrokeCap.round
       ..color = color;
+    final shadow = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke * 1.16
+      ..strokeCap = StrokeCap.round
+      ..color = color.withAlpha(36)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12);
     final halo = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = stroke * 1.55
       ..strokeCap = StrokeCap.round
       ..color = color.withAlpha((haloOpacity * 36).round());
 
+    canvas.drawArc(rect, -math.pi / 2, math.pi * 2, false, shadow);
     canvas.drawArc(rect, 0, math.pi * 2, false, track);
     if (haloOpacity > 0) {
       canvas.drawArc(rect, -math.pi / 2, math.pi * 2 * progress, false, halo);

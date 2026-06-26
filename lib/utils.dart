@@ -6,18 +6,6 @@ import 'package:flutter/material.dart';
 import 'models.dart';
 
 const shelfSeedColor = Color(0xFF646464);
-const dockHeight = 58.0;
-const dockBottomMargin = 14.0;
-const dockHorizontalMargin = 24.0;
-const actionDockGap = 12.0;
-
-double dockBottom(BuildContext context) {
-  return dockBottomMargin + MediaQuery.paddingOf(context).bottom;
-}
-
-double actionsBottom(BuildContext context) {
-  return dockBottom(context) + dockHeight + actionDockGap;
-}
 
 String formatClock(int seconds) {
   final safe = math.max(0, seconds);
@@ -140,5 +128,4 @@ StagePalette modePalette(TimerMode mode) {
   }
 }
 
-bool get usesPersistentTray =>
-    defaultTargetPlatform == TargetPlatform.linux;
+bool get usesPersistentTray => defaultTargetPlatform == TargetPlatform.linux;

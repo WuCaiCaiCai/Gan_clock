@@ -29,7 +29,7 @@ class _SettingsPageState extends State<SettingsPage> {
   int _subPage = 0;
   int _syncSubPage = 0;
 
-  static const _pages = ['', '计时设置', '切换提醒', '外观', '同步'];
+  static const _pages = ['', '计时与待机', '切换提醒', '外观', '同步'];
 
   @override
   void dispose() {
@@ -100,6 +100,8 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget _buildMain() {
     final controller = AppScope.read(context);
     final settings = controller.data.settings;
+    final phaseSummary =
+        '${settings.focusMinutes}/${settings.shortBreakMinutes}/${settings.longBreakMinutes} 分钟';
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 760),
@@ -107,27 +109,34 @@ class _SettingsPageState extends State<SettingsPage> {
           padding: const EdgeInsets.fromLTRB(20, 24, 20, 112),
           children: [
             _SettingsSection(
-              icon: Icons.dashboard_customize_outlined,
-              title: '基础设置',
+              icon: Icons.spa_outlined,
+              title: '专注体验',
               children: [
                 ListTile(
-                  leading: const Icon(Icons.tune),
-                  title: const Text('计时设置'),
-                  subtitle: const Text('时长、循环和静默显示'),
+                  leading: const Icon(Icons.timer_outlined),
+                  title: const Text('计时与待机'),
+                  subtitle: Text(
+                    '$phaseSummary · ${settings.focusCyclesPerRun} 次循环 · 待机 ${settings.idleFocusSeconds} 秒',
+                  ),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => _openSubPage(1),
                 ),
                 ListTile(
                   leading: Icon(themeModeIcon(settings.themeMode)),
                   title: const Text('外观'),
-                  subtitle: Text(settings.themeMode.label),
+                  subtitle: Text('主题 · ${settings.themeMode.label}'),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => _openSubPage(3),
                 ),
                 ListTile(
                   leading: const Icon(Icons.vibration),
                   title: const Text('切换提醒'),
-                  subtitle: const Text('震动和音效'),
+                  subtitle: Text(
+                    [
+                      if (settings.completionHapticsEnabled) '震动' else '无震动',
+                      if (settings.completionSoundEnabled) '音效' else '无音效',
+                    ].join(' · '),
+                  ),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => _openSubPage(2),
                 ),
@@ -136,12 +145,16 @@ class _SettingsPageState extends State<SettingsPage> {
             const SizedBox(height: 14),
             _SettingsSection(
               icon: Icons.sync_alt,
-              title: '数据同步',
+              title: '数据',
               children: [
                 ListTile(
                   leading: const Icon(Icons.sync),
                   title: const Text('同步'),
-                  subtitle: const Text('本地同步与 WebDAV 云端同步'),
+                  subtitle: Text(
+                    settings.webDav.isConfigured
+                        ? '本地同步 · WebDAV 已配置'
+                        : '本地同步 · WebDAV 未配置',
+                  ),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => _openSubPage(4),
                 ),
@@ -274,6 +287,48 @@ class _SettingsSubPageScaffold extends StatelessWidget {
           itemBuilder: (context, index) => children[index],
           separatorBuilder: (context, index) => const SizedBox(height: 14),
           itemCount: children.length,
+        ),
+      ),
+    );
+  }
+}
+
+class _SettingsNote extends StatelessWidget {
+  const _SettingsNote({required this.icon, required this.text});
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(6, 8, 6, 4),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: scheme.surfaceContainerHighest.withAlpha(120),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: scheme.outlineVariant.withAlpha(120)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(icon, size: 18, color: scheme.onSurfaceVariant),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  text,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                    height: 1.35,
+                    letterSpacing: 0,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -723,7 +778,7 @@ class _TimerSettingsContent extends StatelessWidget {
         ),
         _SettingsSection(
           icon: Icons.repeat,
-          title: '循环与显示',
+          title: '循环',
           children: [
             NumberStepper(
               icon: Icons.repeat,
@@ -751,9 +806,19 @@ class _TimerSettingsContent extends StatelessWidget {
                 );
               },
             ),
+          ],
+        ),
+        _SettingsSection(
+          icon: Icons.visibility_off_outlined,
+          title: '待机显示',
+          children: [
+            const _SettingsNote(
+              icon: Icons.dark_mode_outlined,
+              text: '计时页长时间无操作后先进入纯净模式；再经过同样的延时，背景转为 OLED 黑底防烧显示。',
+            ),
             NumberStepper(
               icon: Icons.visibility_off_outlined,
-              label: '静默显示',
+              label: '待机延时',
               value: settings.idleFocusSeconds,
               min: 5,
               max: 600,
@@ -788,7 +853,7 @@ class _FeedbackSettingsContent extends StatelessWidget {
                 contentPadding: const EdgeInsets.fromLTRB(16, 4, 12, 4),
                 secondary: const Icon(Icons.vibration),
                 title: const Text('切换震动'),
-                subtitle: const Text('统一控制 Dock 操作触感与阶段切换振动提醒'),
+                subtitle: const Text('控制底部按钮触感与阶段切换振动提醒'),
                 value: settings.completionHapticsEnabled,
                 onChanged: (value) {
                   controller.updateSettings(

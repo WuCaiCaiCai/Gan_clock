@@ -34,10 +34,9 @@ class TimerActions extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final running = phase == TimerPhase.running;
-    final paused = phase == TimerPhase.paused;
-    final canStop = phase != TimerPhase.idle;
     final canSkip = running && mode != TimerMode.focus;
     final scheme = Theme.of(context).colorScheme;
+    final accent = running ? scheme.primary : scheme.outlineVariant;
     return LayoutBuilder(
       builder: (context, constraints) {
         final compact = constraints.maxWidth < 360;
@@ -56,11 +55,21 @@ class TimerActions extends StatelessWidget {
         return Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 470),
-            child: Material(
-              elevation: 3,
-              shadowColor: Colors.black.withAlpha(18),
-              color: scheme.surface.withAlpha(218),
-              borderRadius: BorderRadius.circular(999),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 260),
+              curve: Curves.easeOutCubic,
+              decoration: BoxDecoration(
+                color: scheme.surface.withAlpha(running ? 226 : 214),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: accent.withAlpha(running ? 46 : 34)),
+                boxShadow: [
+                  BoxShadow(
+                    color: scheme.shadow.withAlpha(running ? 26 : 14),
+                    blurRadius: running ? 18 : 10,
+                    offset: Offset(0, running ? 7 : 4),
+                  ),
+                ],
+              ),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                 child: Row(
@@ -101,13 +110,6 @@ class TimerActions extends StatelessWidget {
                         ),
                         label: Text(running ? '暂停' : '开始'),
                       ),
-                    const SizedBox(width: 7),
-                    _ActionIconButton(
-                      size: iconSize,
-                      tooltip: '设置',
-                      onPressed: onOpenSettings,
-                      icon: Icons.settings_outlined,
-                    ),
                     const SizedBox(width: 6),
                     _ActionIconButton(
                       size: iconSize,
@@ -129,20 +131,13 @@ class TimerActions extends StatelessWidget {
                           ? Icons.picture_in_picture_alt
                           : Icons.picture_in_picture_alt_outlined,
                     ),
-                    if (canStop) ...[
-                      const SizedBox(width: 7),
-                      _ActionIconButton(
-                        size: iconSize,
-                        tooltip: paused ? '停止并重置' : '停止',
-                        onPressed: () {
-                          if (hapticsEnabled) {
-                            unawaited(onUiHaptic());
-                          }
-                          controller.stop();
-                        },
-                        icon: Icons.stop_circle_outlined,
-                      ),
-                    ],
+                    const SizedBox(width: 6),
+                    _ActionIconButton(
+                      size: iconSize,
+                      tooltip: '设置',
+                      onPressed: onOpenSettings,
+                      icon: Icons.settings_outlined,
+                    ),
                   ],
                 ),
               ),

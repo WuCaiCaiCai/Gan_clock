@@ -6,6 +6,7 @@ import 'package:tomato_clock/completion_feedback.dart';
 import 'package:tomato_clock/heatmap.dart';
 import 'package:tomato_clock/main.dart';
 import 'package:tomato_clock/models.dart';
+import 'package:tomato_clock/pages/stats_page.dart';
 import 'package:tomato_clock/pages/settings_page.dart';
 import 'package:tomato_clock/storage.dart';
 import 'package:tomato_clock/widgets/timer_ring.dart';
@@ -40,11 +41,6 @@ bool hasIgnoringAncestor(WidgetTester tester, Finder finder) {
       .any((widget) => widget.ignoring);
 }
 
-Future<void> openEdgeNav(WidgetTester tester) async {
-  await tester.tap(find.byKey(const ValueKey('focus_edge_handle')));
-  await tester.pumpAndSettle();
-}
-
 void main() {
   const focusHitokotoLines = [
     '只处理眼前这一件事。',
@@ -74,6 +70,21 @@ void main() {
     expect(find.byIcon(Icons.settings_outlined), findsOneWidget);
     expect(find.byIcon(Icons.lightbulb_outline), findsOneWidget);
     expect(find.byIcon(Icons.picture_in_picture_alt), findsOneWidget);
+    expect(find.byKey(const ValueKey('focus_edge_handle')), findsNothing);
+    expect(find.byIcon(Icons.schedule), findsOneWidget);
+    expect(find.text('天气 --'), findsOneWidget);
+    expect(
+      tester.getCenter(find.byIcon(Icons.play_arrow)).dx,
+      lessThan(tester.getCenter(find.byIcon(Icons.lightbulb_outline)).dx),
+    );
+    expect(
+      tester.getCenter(find.byIcon(Icons.lightbulb_outline)).dx,
+      lessThan(tester.getCenter(find.byIcon(Icons.picture_in_picture_alt)).dx),
+    );
+    expect(
+      tester.getCenter(find.byIcon(Icons.picture_in_picture_alt)).dx,
+      lessThan(tester.getCenter(find.byIcon(Icons.settings_outlined)).dx),
+    );
     expect(
       focusHitokotoLines.any((line) => find.text(line).evaluate().isNotEmpty),
       isTrue,
@@ -86,7 +97,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 120));
     expect(find.text('暂停'), findsOneWidget);
     expect(find.byIcon(Icons.pause), findsOneWidget);
-    expect(find.byIcon(Icons.stop_circle_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.stop_circle_outlined), findsNothing);
     expect(find.byIcon(Icons.picture_in_picture_alt), findsOneWidget);
 
     await tester.tap(find.byIcon(Icons.lightbulb_outline));
@@ -94,25 +105,19 @@ void main() {
     expect(controller.data.settings.keepScreenOnEnabled, isTrue);
     expect(find.byIcon(Icons.lightbulb), findsOneWidget);
 
-    final stopButton = find.byIcon(Icons.stop_circle_outlined);
-    await tester.tap(stopButton);
-    await tester.pump(const Duration(milliseconds: 120));
-    expect(find.text('开始'), findsOneWidget);
-    expect(find.text('25:00'), findsOneWidget);
-
     await tester.drag(find.byType(TimerProgressRing), const Offset(0, -320));
     await tester.pumpAndSettle();
     expect(find.text('专注热力图'), findsOneWidget);
     expect(find.text('今日番茄'), findsNothing);
 
-    await tester.binding.handlePopRoute();
+    await tester.drag(find.byType(StatsPage), const Offset(0, 320));
     await tester.pumpAndSettle();
-    expect(find.text('25:00'), findsOneWidget);
+    expect(find.byType(TimerProgressRing), findsOneWidget);
     expect(find.text('专注热力图'), findsNothing);
 
     await tester.tap(find.byIcon(Icons.settings_outlined));
     await tester.pumpAndSettle();
-    expect(find.text('计时设置'), findsOneWidget);
+    expect(find.text('计时与待机'), findsOneWidget);
     expect(find.text('外观'), findsOneWidget);
     expect(find.text('切换提醒'), findsOneWidget);
     expect(find.text('WebDAV 同步'), findsNothing);
@@ -139,7 +144,7 @@ void main() {
 
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
-    expect(find.text('计时设置'), findsOneWidget);
+    expect(find.text('计时与待机'), findsOneWidget);
     expect(find.text('切换震动'), findsNothing);
 
     await tester.tap(find.text('同步'));
@@ -256,17 +261,14 @@ void main() {
     await tester.tap(startButton);
     await tester.pump(const Duration(milliseconds: 120));
 
-    expect(find.byIcon(Icons.stop_circle_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.stop_circle_outlined), findsNothing);
+    expect(find.byIcon(Icons.pause), findsOneWidget);
     expect(find.byIcon(Icons.settings_outlined), findsOneWidget);
     expect(find.text('统计'), findsNothing);
 
-    await tester.tapAt(const Offset(24, 240));
-    await tester.pumpAndSettle();
-
-    expect(
-      hasIgnoringAncestor(tester, find.byIcon(Icons.stop_circle_outlined)),
-      isTrue,
-    );
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pump();
+    expect(hasIgnoringAncestor(tester, find.byIcon(Icons.pause)), isTrue);
     expect(
       hasIgnoringAncestor(tester, find.byIcon(Icons.settings_outlined)),
       isTrue,
@@ -277,14 +279,6 @@ void main() {
     await tester.pump();
 
     expect(find.byType(TimerProgressRing), findsOneWidget);
-    expect(
-      hasIgnoringAncestor(tester, find.byIcon(Icons.stop_circle_outlined)),
-      isTrue,
-    );
-    expect(find.text('统计'), findsNothing);
-
-    await tester.pump(const Duration(seconds: 60));
-    await tester.pump();
     final background = tester.widget<AnimatedContainer>(
       find.byKey(const ValueKey('app_background')),
     );
@@ -293,10 +287,7 @@ void main() {
     await tester.tap(find.byType(TimerProgressRing));
     await tester.pump();
 
-    expect(
-      hasIgnoringAncestor(tester, find.byIcon(Icons.stop_circle_outlined)),
-      isFalse,
-    );
+    expect(hasIgnoringAncestor(tester, find.byIcon(Icons.pause)), isFalse);
     final restoredBackground = tester.widget<AnimatedContainer>(
       find.byKey(const ValueKey('app_background')),
     );
@@ -434,8 +425,7 @@ void main() {
     await tester.pumpWidget(TomatoApp(controller: controller));
     await tester.pumpAndSettle();
 
-    await openEdgeNav(tester);
-    await tester.tap(find.text('统计'));
+    await tester.drag(find.byType(TimerProgressRing), const Offset(0, -320));
     await tester.pumpAndSettle();
 
     expect(find.text('今日专注'), findsOneWidget);
