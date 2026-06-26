@@ -16,9 +16,14 @@ class TimerPage extends StatelessWidget {
     required this.controller,
     required this.data,
     required this.quiet,
+    required this.oledMode,
     required this.inPictureInPicture,
     required this.expandFromPictureInPicture,
     required this.onRequestQuiet,
+    required this.onOpenStats,
+    required this.onOpenSettings,
+    required this.onToggleKeepScreenOn,
+    required this.onTogglePictureInPicture,
     required this.onUiHaptic,
     super.key,
   });
@@ -26,9 +31,14 @@ class TimerPage extends StatelessWidget {
   final AppController controller;
   final TomatoData data;
   final bool quiet;
+  final bool oledMode;
   final bool inPictureInPicture;
   final bool expandFromPictureInPicture;
   final VoidCallback onRequestQuiet;
+  final VoidCallback onOpenStats;
+  final VoidCallback onOpenSettings;
+  final VoidCallback onToggleKeepScreenOn;
+  final ValueChanged<bool> onTogglePictureInPicture;
   final Future<void> Function() onUiHaptic;
 
   @override
@@ -39,10 +49,11 @@ class TimerPage extends StatelessWidget {
     }
 
     final settings = data.settings;
+    final pureDisplay = quiet || oledMode;
     return LayoutBuilder(
       builder: (context, constraints) {
         final controlsBottom = 28.0 + MediaQuery.paddingOf(context).bottom;
-        final bottomReserve = controlsBottom + 98;
+        final bottomReserve = controlsBottom + 104;
         final quoteTop = (constraints.maxHeight * 0.095).clamp(50.0, 90.0);
         final contentOffset = (constraints.maxHeight * -0.04).clamp(
           -42.0,
@@ -54,10 +65,30 @@ class TimerPage extends StatelessWidget {
               math.max(216.0, constraints.maxHeight - quoteTop - bottomReserve),
             ) *
             0.94;
+        final centerY = constraints.maxHeight / 2 + contentOffset;
+        final statusTop = math
+            .min(
+              centerY + maxRingDimension / 2 + 14,
+              constraints.maxHeight - controlsBottom - 58,
+            )
+            .clamp(quoteTop + 76, constraints.maxHeight - controlsBottom - 58)
+            .toDouble();
 
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: onRequestQuiet,
+          onVerticalDragUpdate: (details) {
+            final delta = details.primaryDelta ?? 0;
+            if (delta < -10) {
+              onOpenStats();
+            }
+          },
+          onVerticalDragEnd: (details) {
+            final velocity = details.primaryVelocity ?? 0;
+            if (velocity < -260) {
+              onOpenStats();
+            }
+          },
           child: Stack(
             children: [
               Center(
@@ -65,9 +96,13 @@ class TimerPage extends StatelessWidget {
                   offset: Offset(0, contentOffset),
                   child: _PipReturnScale(
                     active: expandFromPictureInPicture,
-                    child: TimerProgressRing(
-                      snapshot: timer,
-                      maxDimension: maxRingDimension,
+                    child: _TimerFace(
+                      oledMode: oledMode,
+                      child: TimerProgressRing(
+                        snapshot: timer,
+                        maxDimension: maxRingDimension,
+                        showInnerStatus: false,
+                      ),
                     ),
                   ),
                 ),
@@ -77,9 +112,26 @@ class TimerPage extends StatelessWidget {
                 right: 24,
                 top: quoteTop,
                 child: ChromeFade(
-                  hidden: false,
+                  hidden: pureDisplay,
                   slideOffset: const Offset(0, -0.08),
                   child: _HitokotoLine(mode: timer.mode),
+                ),
+              ),
+              Positioned(
+                left: 24,
+                right: 24,
+                top: statusTop,
+                child: ChromeFade(
+                  hidden: pureDisplay,
+                  slideOffset: const Offset(0, 0.10),
+                  scale: 0.98,
+                  child: Center(
+                    child: _PhasePill(
+                      mode: timer.mode,
+                      phase: timer.phase,
+                      maxWidth: math.min(320, constraints.maxWidth - 48),
+                    ),
+                  ),
                 ),
               ),
               Positioned(
@@ -87,27 +139,20 @@ class TimerPage extends StatelessWidget {
                 right: 16,
                 bottom: controlsBottom,
                 child: ChromeFade(
-                  hidden: quiet,
+                  hidden: pureDisplay,
                   slideOffset: const Offset(0, 0.18),
                   scale: 0.96,
                   child: TimerActions(
                     controller: controller,
                     mode: timer.mode,
                     phase: timer.phase,
+                    keepScreenOn: settings.keepScreenOnEnabled,
+                    pictureInPictureEnabled: settings.pictureInPictureEnabled,
                     hapticsEnabled: settings.completionHapticsEnabled,
+                    onOpenSettings: onOpenSettings,
+                    onToggleKeepScreenOn: onToggleKeepScreenOn,
+                    onTogglePictureInPicture: onTogglePictureInPicture,
                     onUiHaptic: onUiHaptic,
-                  ),
-                ),
-              ),
-              Positioned(
-                left: 20,
-                right: 20,
-                top: 16,
-                child: ChromeFade(
-                  hidden: quiet,
-                  slideOffset: const Offset(0, -0.08),
-                  child: Center(
-                    child: _PhasePill(mode: timer.mode, phase: timer.phase),
                   ),
                 ),
               ),
@@ -119,32 +164,67 @@ class TimerPage extends StatelessWidget {
   }
 }
 
+class _TimerFace extends StatelessWidget {
+  const _TimerFace({required this.oledMode, required this.child});
+
+  final bool oledMode;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!oledMode) {
+      return child;
+    }
+    final theme = Theme.of(context);
+    return Theme(
+      data: theme.copyWith(
+        colorScheme: theme.colorScheme.copyWith(
+          onSurface: Colors.white,
+          onSurfaceVariant: Colors.white70,
+        ),
+      ),
+      child: child,
+    );
+  }
+}
+
 class _PhasePill extends StatelessWidget {
-  const _PhasePill({required this.mode, required this.phase});
+  const _PhasePill({
+    required this.mode,
+    required this.phase,
+    required this.maxWidth,
+  });
 
   final TimerMode mode;
   final TimerPhase phase;
+  final double maxWidth;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final palette = modePalette(mode);
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 260),
-      curve: Curves.easeOutCubic,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-      decoration: BoxDecoration(
-        color: scheme.surface.withAlpha(220),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: palette.accent.withAlpha(90)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(modeIcon(mode), size: 18, color: palette.accent),
-          const SizedBox(width: 8),
-          Text('${mode.label} · ${phaseLabel(phase)}'),
-        ],
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: maxWidth),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 260),
+        curve: Curves.easeOutCubic,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: scheme.surface.withAlpha(220),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: palette.accent.withAlpha(90)),
+        ),
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(modeIcon(mode), size: 18, color: palette.accent),
+              const SizedBox(width: 8),
+              Text('${mode.label} · ${phaseLabel(phase)}'),
+            ],
+          ),
+        ),
       ),
     );
   }

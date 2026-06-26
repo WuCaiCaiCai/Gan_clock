@@ -10,7 +10,12 @@ class TimerActions extends StatelessWidget {
     required this.controller,
     required this.mode,
     required this.phase,
+    required this.keepScreenOn,
+    required this.pictureInPictureEnabled,
     required this.hapticsEnabled,
+    required this.onOpenSettings,
+    required this.onToggleKeepScreenOn,
+    required this.onTogglePictureInPicture,
     required this.onUiHaptic,
     super.key,
   });
@@ -18,7 +23,12 @@ class TimerActions extends StatelessWidget {
   final AppController controller;
   final TimerMode mode;
   final TimerPhase phase;
+  final bool keepScreenOn;
+  final bool pictureInPictureEnabled;
   final bool hapticsEnabled;
+  final VoidCallback onOpenSettings;
+  final VoidCallback onToggleKeepScreenOn;
+  final ValueChanged<bool> onTogglePictureInPicture;
   final Future<void> Function() onUiHaptic;
 
   @override
@@ -45,7 +55,7 @@ class TimerActions extends StatelessWidget {
 
         return Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 420),
+            constraints: const BoxConstraints(maxWidth: 470),
             child: Material(
               elevation: 3,
               shadowColor: Colors.black.withAlpha(18),
@@ -91,6 +101,34 @@ class TimerActions extends StatelessWidget {
                         ),
                         label: Text(running ? '暂停' : '开始'),
                       ),
+                    const SizedBox(width: 7),
+                    _ActionIconButton(
+                      size: iconSize,
+                      tooltip: '设置',
+                      onPressed: onOpenSettings,
+                      icon: Icons.settings_outlined,
+                    ),
+                    const SizedBox(width: 6),
+                    _ActionIconButton(
+                      size: iconSize,
+                      tooltip: keepScreenOn ? '关闭屏幕常亮' : '开启屏幕常亮',
+                      selected: keepScreenOn,
+                      onPressed: onToggleKeepScreenOn,
+                      icon: keepScreenOn
+                          ? Icons.lightbulb
+                          : Icons.lightbulb_outline,
+                    ),
+                    const SizedBox(width: 6),
+                    _ActionIconButton(
+                      size: iconSize,
+                      tooltip: pictureInPictureEnabled ? '关闭小窗播放' : '开启小窗播放',
+                      selected: pictureInPictureEnabled,
+                      onPressed: () =>
+                          onTogglePictureInPicture(!pictureInPictureEnabled),
+                      icon: pictureInPictureEnabled
+                          ? Icons.picture_in_picture_alt
+                          : Icons.picture_in_picture_alt_outlined,
+                    ),
                     if (canStop) ...[
                       const SizedBox(width: 7),
                       _ActionIconButton(
@@ -122,18 +160,21 @@ class _ActionIconButton extends StatelessWidget {
     required this.tooltip,
     required this.onPressed,
     required this.icon,
+    this.selected = false,
   });
 
   final double size;
   final String tooltip;
   final VoidCallback? onPressed;
   final IconData icon;
+  final bool selected;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return IconButton.filledTonal(
       tooltip: tooltip,
+      isSelected: selected,
       onPressed: onPressed,
       style:
           IconButton.styleFrom(
@@ -155,15 +196,24 @@ class _ActionIconButton extends StatelessWidget {
               if (states.contains(WidgetState.disabled)) {
                 return scheme.surfaceContainerHighest.withAlpha(128);
               }
+              if (states.contains(WidgetState.selected)) {
+                return scheme.primary.withAlpha(22);
+              }
               return scheme.surfaceContainerHighest;
             }),
             foregroundColor: WidgetStateProperty.resolveWith((states) {
               if (states.contains(WidgetState.disabled)) {
                 return scheme.onSurfaceVariant.withAlpha(130);
               }
+              if (states.contains(WidgetState.selected)) {
+                return scheme.primary;
+              }
               return scheme.onSurfaceVariant;
             }),
             side: WidgetStateProperty.resolveWith((states) {
+              if (states.contains(WidgetState.selected)) {
+                return BorderSide(color: scheme.primary.withAlpha(56));
+              }
               return BorderSide(color: scheme.outlineVariant.withAlpha(120));
             }),
           ),

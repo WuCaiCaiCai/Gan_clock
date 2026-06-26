@@ -71,6 +71,9 @@ void main() {
     expect(find.text('开始'), findsOneWidget);
     expect(find.byIcon(Icons.stop_circle_outlined), findsNothing);
     expect(find.byIcon(Icons.play_arrow), findsOneWidget);
+    expect(find.byIcon(Icons.settings_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.lightbulb_outline), findsOneWidget);
+    expect(find.byIcon(Icons.picture_in_picture_alt), findsOneWidget);
     expect(
       focusHitokotoLines.any((line) => find.text(line).evaluate().isNotEmpty),
       isTrue,
@@ -84,7 +87,12 @@ void main() {
     expect(find.text('暂停'), findsOneWidget);
     expect(find.byIcon(Icons.pause), findsOneWidget);
     expect(find.byIcon(Icons.stop_circle_outlined), findsOneWidget);
-    expect(find.byIcon(Icons.picture_in_picture_alt), findsNothing);
+    expect(find.byIcon(Icons.picture_in_picture_alt), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.lightbulb_outline));
+    await tester.pumpAndSettle();
+    expect(controller.data.settings.keepScreenOnEnabled, isTrue);
+    expect(find.byIcon(Icons.lightbulb), findsOneWidget);
 
     final stopButton = find.byIcon(Icons.stop_circle_outlined);
     await tester.tap(stopButton);
@@ -92,13 +100,7 @@ void main() {
     expect(find.text('开始'), findsOneWidget);
     expect(find.text('25:00'), findsOneWidget);
 
-    await openEdgeNav(tester);
-    expect(find.byKey(const ValueKey('focus_nav_panel')), findsOneWidget);
-    expect(find.text('番茄钟'), findsOneWidget);
-    expect(find.text('统计'), findsOneWidget);
-    expect(find.text('设置'), findsOneWidget);
-
-    await tester.tap(find.text('统计'));
+    await tester.drag(find.byType(TimerProgressRing), const Offset(0, -320));
     await tester.pumpAndSettle();
     expect(find.text('专注热力图'), findsOneWidget);
     expect(find.text('今日番茄'), findsNothing);
@@ -108,8 +110,7 @@ void main() {
     expect(find.text('25:00'), findsOneWidget);
     expect(find.text('专注热力图'), findsNothing);
 
-    await openEdgeNav(tester);
-    await tester.tap(find.text('设置'));
+    await tester.tap(find.byIcon(Icons.settings_outlined));
     await tester.pumpAndSettle();
     expect(find.text('计时设置'), findsOneWidget);
     expect(find.text('外观'), findsOneWidget);
@@ -256,6 +257,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 120));
 
     expect(find.byIcon(Icons.stop_circle_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.settings_outlined), findsOneWidget);
     expect(find.text('统计'), findsNothing);
 
     await tester.tapAt(const Offset(24, 240));
@@ -263,6 +265,10 @@ void main() {
 
     expect(
       hasIgnoringAncestor(tester, find.byIcon(Icons.stop_circle_outlined)),
+      isTrue,
+    );
+    expect(
+      hasIgnoringAncestor(tester, find.byIcon(Icons.settings_outlined)),
       isTrue,
     );
     expect(find.text('统计'), findsNothing);
@@ -277,12 +283,26 @@ void main() {
     );
     expect(find.text('统计'), findsNothing);
 
+    await tester.pump(const Duration(seconds: 60));
+    await tester.pump();
+    final background = tester.widget<AnimatedContainer>(
+      find.byKey(const ValueKey('app_background')),
+    );
+    expect((background.decoration as BoxDecoration?)?.color, Colors.black);
+
     await tester.tap(find.byType(TimerProgressRing));
     await tester.pump();
 
     expect(
       hasIgnoringAncestor(tester, find.byIcon(Icons.stop_circle_outlined)),
       isFalse,
+    );
+    final restoredBackground = tester.widget<AnimatedContainer>(
+      find.byKey(const ValueKey('app_background')),
+    );
+    expect(
+      (restoredBackground.decoration as BoxDecoration?)?.color,
+      isNot(Colors.black),
     );
     expect(find.text('统计'), findsNothing);
 

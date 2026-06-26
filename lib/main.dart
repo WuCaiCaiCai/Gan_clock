@@ -38,7 +38,9 @@ class _TomatoAppState extends State<TomatoApp> {
     _controller = widget.controller ?? AppController();
     _controller.addListener(_onAppConfigChanged);
     _themeMode = _controller.data.settings.themeMode;
-    unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge));
+    unawaited(
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky),
+    );
     SystemChrome.setSystemUIOverlayStyle(
       const SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
@@ -192,6 +194,7 @@ class _TomatoHomePageState extends State<TomatoHomePage>
     with WidgetsBindingObserver {
   AppController? _controller;
   Timer? _idleChromeTimer;
+  Timer? _oledIdleTimer;
   Timer? _pipChromeRestoreTimer;
   Timer? _pipReturnTimer;
   int _selectedIndex = 0;
@@ -199,6 +202,7 @@ class _TomatoHomePageState extends State<TomatoHomePage>
   bool _statsSubPageOpen = false;
   bool _navigationOpen = false;
   bool _chromeHidden = false;
+  bool _oledMode = false;
   bool _inPictureInPicture = false;
   bool _pipTransitioning = false;
   bool _returningFromPictureInPicture = false;
@@ -246,6 +250,7 @@ class _TomatoHomePageState extends State<TomatoHomePage>
     WidgetsBinding.instance.removeObserver(this);
     _controller?.removeListener(_handleControllerChanged);
     _idleChromeTimer?.cancel();
+    _oledIdleTimer?.cancel();
     _pipChromeRestoreTimer?.cancel();
     _pipReturnTimer?.cancel();
     unawaited(PlatformControls.setKeepScreenOn(false));
@@ -408,15 +413,22 @@ class _TomatoHomePageState extends State<TomatoHomePage>
     final pipPreview = _inPictureInPicture || _pipTransitioning;
     final hideChrome =
         !_navigationOpen &&
-        (_chromeHidden || pipPreview) &&
+        (_chromeHidden || _oledMode || pipPreview) &&
         _selectedIndex == 0 &&
-        timer.phase == TimerPhase.running;
-    final pageBackground = _pageBackground(
+        !controller.loading;
+    final normalPageBackground = _pageBackground(
       context: context,
       selectedIndex: _selectedIndex,
       timerMode: timer.mode,
     );
-    _syncSystemUi(context, pageBackground, immersive: hideChrome);
+    final pageBackground = _oledMode && _selectedIndex == 0
+        ? Colors.black
+        : normalPageBackground;
+    _syncSystemUi(
+      context,
+      pageBackground,
+      immersive: hideChrome || _selectedIndex == 0,
+    );
 
     return PopScope<void>(
       canPop:
@@ -443,6 +455,7 @@ class _TomatoHomePageState extends State<TomatoHomePage>
         onPointerMove: (_) => _handleUserActivity(),
         onPointerSignal: (_) => _handleUserActivity(),
         child: AnimatedContainer(
+          key: const ValueKey('app_background'),
           duration: const Duration(milliseconds: 360),
           curve: Curves.easeOutCubic,
           color: pageBackground,
@@ -459,6 +472,7 @@ class _TomatoHomePageState extends State<TomatoHomePage>
                                 controller: controller,
                                 data: data,
                                 quiet: hideChrome,
+                                oledMode: false,
                                 inPictureInPicture: true,
                                 expandFromPictureInPicture: false,
                               )
@@ -469,6 +483,7 @@ class _TomatoHomePageState extends State<TomatoHomePage>
                                   controller: controller,
                                   data: data,
                                   quiet: hideChrome,
+                                  oledMode: _oledMode,
                                   inPictureInPicture: false,
                                   expandFromPictureInPicture:
                                       _returningFromPictureInPicture,
@@ -485,14 +500,7 @@ class _TomatoHomePageState extends State<TomatoHomePage>
                           onOpen: _openNavigation,
                           onClose: _closeNavigation,
                           onSelected: _selectPage,
-                          onToggleKeepScreenOn: () {
-                            controller.updateSettings(
-                              data.settings.copyWith(
-                                keepScreenOnEnabled:
-                                    !data.settings.keepScreenOnEnabled,
-                              ),
-                            );
-                          },
+                          onToggleKeepScreenOn: _toggleKeepScreenOn,
                           onTogglePictureInPicture: _togglePictureInPicture,
                         ),
                     ],
@@ -507,6 +515,7 @@ class _TomatoHomePageState extends State<TomatoHomePage>
     required AppController controller,
     required TomatoData data,
     required bool quiet,
+    required bool oledMode,
     required bool inPictureInPicture,
     required bool expandFromPictureInPicture,
   }) {
@@ -542,6 +551,7 @@ class _TomatoHomePageState extends State<TomatoHomePage>
           controller: controller,
           data: data,
           quiet: quiet,
+          oledMode: oledMode,
           inPictureInPicture: inPictureInPicture,
           expandFromPictureInPicture: expandFromPictureInPicture,
         ),
@@ -553,6 +563,7 @@ class _TomatoHomePageState extends State<TomatoHomePage>
     required AppController controller,
     required TomatoData data,
     required bool quiet,
+    required bool oledMode,
     required bool inPictureInPicture,
     required bool expandFromPictureInPicture,
   }) {
@@ -562,9 +573,14 @@ class _TomatoHomePageState extends State<TomatoHomePage>
           controller: controller,
           data: data,
           quiet: quiet,
+          oledMode: oledMode,
           inPictureInPicture: inPictureInPicture,
           expandFromPictureInPicture: expandFromPictureInPicture,
           onRequestQuiet: _requestQuiet,
+          onOpenStats: () => _selectPage(1),
+          onOpenSettings: () => _selectPage(2),
+          onToggleKeepScreenOn: _toggleKeepScreenOn,
+          onTogglePictureInPicture: _togglePictureInPicture,
           onUiHaptic: _emitUiHaptic,
         );
       case 1:
@@ -583,9 +599,14 @@ class _TomatoHomePageState extends State<TomatoHomePage>
           controller: controller,
           data: data,
           quiet: quiet,
+          oledMode: oledMode,
           inPictureInPicture: inPictureInPicture,
           expandFromPictureInPicture: expandFromPictureInPicture,
           onRequestQuiet: _requestQuiet,
+          onOpenStats: () => _selectPage(1),
+          onOpenSettings: () => _selectPage(2),
+          onToggleKeepScreenOn: _toggleKeepScreenOn,
+          onTogglePictureInPicture: _togglePictureInPicture,
           onUiHaptic: _emitUiHaptic,
         );
     }
@@ -599,6 +620,7 @@ class _TomatoHomePageState extends State<TomatoHomePage>
     setState(() {
       _selectedIndex = index;
       _navigationOpen = false;
+      _oledMode = false;
       if (index != 2) {
         _settingsSubPageOpen = false;
       }
@@ -618,6 +640,7 @@ class _TomatoHomePageState extends State<TomatoHomePage>
     setState(() {
       _navigationOpen = true;
       _chromeHidden = false;
+      _oledMode = false;
     });
     _syncIdleChrome(restart: true);
   }
@@ -630,6 +653,19 @@ class _TomatoHomePageState extends State<TomatoHomePage>
       _navigationOpen = false;
     });
     _syncIdleChrome(restart: true);
+  }
+
+  void _toggleKeepScreenOn() {
+    final controller = _controller;
+    if (controller == null) {
+      return;
+    }
+    final settings = controller.data.settings;
+    unawaited(
+      controller.updateSettings(
+        settings.copyWith(keepScreenOnEnabled: !settings.keepScreenOnEnabled),
+      ),
+    );
   }
 
   void _handleStatsSubPageChanged(bool open) {
@@ -659,15 +695,18 @@ class _TomatoHomePageState extends State<TomatoHomePage>
     if (controller == null ||
         _navigationOpen ||
         _selectedIndex != 0 ||
-        controller.data.timer.phase != TimerPhase.running ||
         _chromeHidden) {
       return;
     }
     _idleChromeTimer?.cancel();
     _idleChromeTimer = null;
+    _oledIdleTimer?.cancel();
+    _oledIdleTimer = null;
     setState(() {
       _chromeHidden = true;
+      _oledMode = false;
     });
+    _scheduleOledMode();
   }
 
   void _prepareForPictureInPicture() {
@@ -680,6 +719,8 @@ class _TomatoHomePageState extends State<TomatoHomePage>
     }
     _idleChromeTimer?.cancel();
     _idleChromeTimer = null;
+    _oledIdleTimer?.cancel();
+    _oledIdleTimer = null;
     _pipChromeRestoreTimer?.cancel();
     _pipReturnTimer?.cancel();
     if (_selectedIndex == 0 && _chromeHidden && _pipTransitioning) {
@@ -688,6 +729,7 @@ class _TomatoHomePageState extends State<TomatoHomePage>
     setState(() {
       _selectedIndex = 0;
       _chromeHidden = true;
+      _oledMode = false;
       _pipTransitioning = true;
       _returningFromPictureInPicture = false;
     });
@@ -730,12 +772,15 @@ class _TomatoHomePageState extends State<TomatoHomePage>
     if (_navigationOpen) {
       return;
     }
-    if (_chromeHidden) {
+    if (_chromeHidden || _oledMode) {
       setState(() {
         _chromeHidden = false;
+        _oledMode = false;
       });
       _ignoreNextQuietTap = true;
     }
+    _oledIdleTimer?.cancel();
+    _oledIdleTimer = null;
     _syncIdleChrome(restart: true);
   }
 
@@ -747,31 +792,36 @@ class _TomatoHomePageState extends State<TomatoHomePage>
     if (_inPictureInPicture) {
       _idleChromeTimer?.cancel();
       _idleChromeTimer = null;
+      _oledIdleTimer?.cancel();
+      _oledIdleTimer = null;
       return;
     }
     if (_navigationOpen) {
       _idleChromeTimer?.cancel();
       _idleChromeTimer = null;
+      _oledIdleTimer?.cancel();
+      _oledIdleTimer = null;
       return;
     }
     final settings = controller.data.settings;
-    final eligible =
-        _selectedIndex == 0 &&
-        controller.data.timer.phase == TimerPhase.running &&
-        !controller.loading;
+    final eligible = _selectedIndex == 0 && !controller.loading;
 
     if (!eligible) {
       _idleChromeTimer?.cancel();
       _idleChromeTimer = null;
-      if (_chromeHidden) {
+      _oledIdleTimer?.cancel();
+      _oledIdleTimer = null;
+      if (_chromeHidden || _oledMode) {
         setState(() {
           _chromeHidden = false;
+          _oledMode = false;
         });
       }
       return;
     }
 
     if (_chromeHidden) {
+      _scheduleOledMode();
       return;
     }
 
@@ -784,12 +834,29 @@ class _TomatoHomePageState extends State<TomatoHomePage>
         return;
       }
       final latest = _controller?.data;
-      if (_selectedIndex == 0 && latest?.timer.phase == TimerPhase.running) {
+      if (_selectedIndex == 0 && latest != null) {
         setState(() {
           _chromeHidden = true;
+          _oledMode = false;
         });
         _idleChromeTimer = null;
+        _scheduleOledMode();
       }
+    });
+  }
+
+  void _scheduleOledMode() {
+    if (_oledIdleTimer != null || _oledMode || _selectedIndex != 0) {
+      return;
+    }
+    _oledIdleTimer = Timer(const Duration(seconds: 60), () {
+      if (!mounted || _selectedIndex != 0 || !_chromeHidden) {
+        return;
+      }
+      setState(() {
+        _oledMode = true;
+      });
+      _oledIdleTimer = null;
     });
   }
 

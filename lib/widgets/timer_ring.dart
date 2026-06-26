@@ -10,6 +10,7 @@ class TimerProgressRing extends StatefulWidget {
     required this.snapshot,
     required this.maxDimension,
     this.compact = false,
+    this.showInnerStatus = true,
     this.surfaceKey,
     super.key,
   });
@@ -17,6 +18,7 @@ class TimerProgressRing extends StatefulWidget {
   final TimerSnapshot snapshot;
   final double maxDimension;
   final bool compact;
+  final bool showInnerStatus;
   final Key? surfaceKey;
 
   @override
@@ -116,7 +118,9 @@ class _TimerProgressRingState extends State<TimerProgressRing>
                   .clamp(18.0, 42.0)
                   .toDouble()
             : null;
-        final compactTextColor = contrastOnColor(palette.backgroundFor(context));
+        final compactTextColor = contrastOnColor(
+          palette.backgroundFor(context),
+        );
 
         return Center(
           child: AnimatedBuilder(
@@ -162,7 +166,8 @@ class _TimerProgressRingState extends State<TimerProgressRing>
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              if (!widget.compact) ...[
+                              if (!widget.compact &&
+                                  widget.showInnerStatus) ...[
                                 AnimatedSwitcher(
                                   duration: const Duration(milliseconds: 180),
                                   child: Icon(
@@ -194,7 +199,8 @@ class _TimerProgressRingState extends State<TimerProgressRing>
                                   ),
                                 ),
                               ),
-                              if (!widget.compact) ...[
+                              if (!widget.compact &&
+                                  widget.showInnerStatus) ...[
                                 const SizedBox(height: 8),
                                 AnimatedSwitcher(
                                   duration: const Duration(milliseconds: 180),
