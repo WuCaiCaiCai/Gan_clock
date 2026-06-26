@@ -1120,35 +1120,41 @@ class _StatsSheetOverlay extends StatelessWidget {
         onEnd: onAnimationEnd,
         child: IgnorePointer(
           ignoring: !visible,
-          child: ColoredBox(
+            child: ColoredBox(
             color: scheme.surface,
             child: Column(
               children: [
                 SafeArea(
                   bottom: false,
                   child: Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
-                  child: Row(
-                    children: [
-                      const SizedBox(width: 48),
-                      Expanded(
-                        child: Text(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 12, 4),
+                    child: Row(
+                      children: [
+                        Text(
                           '统计',
-                          textAlign: TextAlign.center,
-                          style: Theme.of(context).textTheme.titleMedium
+                          style: Theme.of(context).textTheme.titleLarge
                               ?.copyWith(fontWeight: FontWeight.w600),
                         ),
-                      ),
-                      IconButton(
-                        tooltip: '关闭',
-                        icon: const Icon(Icons.close),
-                        onPressed: onClose,
-                      ),
-                    ],
+                        const Spacer(),
+                        IconButton(
+                          tooltip: '关闭',
+                          icon: const Icon(Icons.close),
+                          onPressed: onClose,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-              Expanded(
+                const SizedBox(height: 8),
+                // ponytail: decorative ring mask as visual bridge
+                CustomPaint(
+                  size: const Size(80, 80),
+                  painter: _StatsRingMask(
+                    color: scheme.outlineVariant.withAlpha(40),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Expanded(
                 child: RepaintBoundary(
                   child: StatsPage(
                     data: data,
@@ -1163,4 +1169,26 @@ class _StatsSheetOverlay extends StatelessWidget {
       ),
     );
   }
+}
+
+class _StatsRingMask extends CustomPainter {
+  const _StatsRingMask({required this.color});
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = size.width / 2 - 9;
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 18
+      ..strokeCap = StrokeCap.round
+      ..color = color;
+    canvas.drawCircle(center, radius, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _StatsRingMask oldDelegate) =>
+      oldDelegate.color != color;
 }
