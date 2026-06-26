@@ -56,8 +56,8 @@ class TimerPage extends StatelessWidget {
       builder: (context, constraints) {
         final controlsBottom = 28.0 + MediaQuery.paddingOf(context).bottom;
         final bottomReserve = controlsBottom + 104;
-        // ponytail: status bar hidden via immersive mode, place info at top edge
-        final ambientTop = 0.0;
+        // ponytail: small top margin so chip doesn't touch screen edge
+        final ambientTop = 10.0;
         final quoteTop = (constraints.maxHeight * 0.072).clamp(42.0, 76.0);
         final maxRingDimension =
             math.min(
@@ -220,7 +220,7 @@ class _AmbientInfoLineState extends State<_AmbientInfoLine> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final labelStyle = theme.textTheme.labelMedium?.copyWith(
+    final labelStyle = theme.textTheme.titleSmall?.copyWith(
       color: scheme.onSurfaceVariant.withAlpha(210),
       fontWeight: FontWeight.w600,
       letterSpacing: 0,
@@ -230,6 +230,7 @@ class _AmbientInfoLineState extends State<_AmbientInfoLine> {
         _AmbientChip(
           icon: Icons.schedule,
           label: _formatTime(_now),
+          iconSize: 18,
           style: labelStyle,
         ),
         const Spacer(),
@@ -240,6 +241,7 @@ class _AmbientInfoLineState extends State<_AmbientInfoLine> {
               child: _AmbientChip(
                 icon: _weatherIcon(_weather?.condition),
                 label: _weather == null ? '--' : '${_weather!.temperatureC}°',
+                iconSize: 18,
                 style: labelStyle,
               ),
             ),
@@ -254,11 +256,13 @@ class _AmbientChip extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.style,
+    this.iconSize = 15,
   });
 
   final IconData icon;
   final String label;
   final TextStyle? style;
+  final double iconSize;
 
   @override
   Widget build(BuildContext context) {
@@ -274,7 +278,7 @@ class _AmbientChip extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 15, color: scheme.onSurfaceVariant),
+            Icon(icon, size: iconSize, color: scheme.onSurfaceVariant),
             const SizedBox(width: 6),
             Flexible(
               child: Text(

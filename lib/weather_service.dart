@@ -47,16 +47,18 @@ class WeatherService {
   }
 
   Future<_WeatherLocation?> _fetchLocation() async {
-    final response = await _getJson(Uri.parse('https://ipapi.co/json/'));
+    // ponytail: two free IP geolocation services for reliability
+    var response = await _getJson(Uri.parse('https://ipapi.co/json/'));
+    response ??= await _getJson(Uri.parse('http://ip-api.com/json/?fields=status,lat,lon,city'));
     if (response == null) {
       return null;
     }
-    final latitude = _doubleOrNull(response['latitude']);
-    final longitude = _doubleOrNull(response['longitude']);
+    final latitude = _doubleOrNull(response['latitude'] ?? response['lat']);
+    final longitude = _doubleOrNull(response['longitude'] ?? response['lon']);
     if (latitude == null || longitude == null) {
       return null;
     }
-    final city = response['city'] as String? ?? '';
+    final city = (response['city'] as String?) ?? '';
     return _WeatherLocation(
       latitude: latitude,
       longitude: longitude,
