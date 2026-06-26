@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../app_controller.dart';
+import '../app_scope.dart';
 import '../models.dart';
 import '../platform_controls.dart';
 import '../utils.dart';

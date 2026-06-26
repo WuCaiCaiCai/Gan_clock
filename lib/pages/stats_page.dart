@@ -7,7 +7,11 @@ import '../utils.dart';
 const _completedColor = Color(0xFF2F7D57);
 
 class StatsPage extends StatefulWidget {
-  const StatsPage({required this.data, required this.onSubPageOpenChanged});
+  const StatsPage({
+    required this.data,
+    required this.onSubPageOpenChanged,
+    super.key,
+  });
 
   final TomatoData data;
   final ValueChanged<bool> onSubPageOpenChanged;

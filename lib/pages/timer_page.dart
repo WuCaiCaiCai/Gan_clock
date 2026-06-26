@@ -19,7 +19,6 @@ class TimerPage extends StatelessWidget {
     required this.inPictureInPicture,
     required this.expandFromPictureInPicture,
     required this.onRequestQuiet,
-    required this.onTogglePictureInPicture,
     required this.onUiHaptic,
     super.key,
   });
@@ -30,7 +29,6 @@ class TimerPage extends StatelessWidget {
   final bool inPictureInPicture;
   final bool expandFromPictureInPicture;
   final VoidCallback onRequestQuiet;
-  final ValueChanged<bool> onTogglePictureInPicture;
   final Future<void> Function() onUiHaptic;
 
   @override
@@ -43,18 +41,19 @@ class TimerPage extends StatelessWidget {
     final settings = data.settings;
     return LayoutBuilder(
       builder: (context, constraints) {
-        final bottomReserve = actionsBottom(context) + 72;
-        final quoteTop = (constraints.maxHeight * 0.10).clamp(54.0, 92.0);
+        final controlsBottom = 28.0 + MediaQuery.paddingOf(context).bottom;
+        final bottomReserve = controlsBottom + 98;
+        final quoteTop = (constraints.maxHeight * 0.095).clamp(50.0, 90.0);
         final contentOffset = (constraints.maxHeight * -0.04).clamp(
           -42.0,
           -26.0,
         );
         final maxRingDimension =
             math.min(
-              318.0,
+              344.0,
               math.max(216.0, constraints.maxHeight - quoteTop - bottomReserve),
             ) *
-            0.9;
+            0.94;
 
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
@@ -86,25 +85,16 @@ class TimerPage extends StatelessWidget {
               Positioned(
                 left: 16,
                 right: 16,
-                bottom: actionsBottom(context),
+                bottom: controlsBottom,
                 child: ChromeFade(
                   hidden: quiet,
-                  slideOffset: const Offset(0, 0.14),
+                  slideOffset: const Offset(0, 0.18),
+                  scale: 0.96,
                   child: TimerActions(
                     controller: controller,
                     mode: timer.mode,
                     phase: timer.phase,
-                    keepScreenOn: settings.keepScreenOnEnabled,
-                    pictureInPictureEnabled: settings.pictureInPictureEnabled,
                     hapticsEnabled: settings.completionHapticsEnabled,
-                    onToggleKeepScreenOn: () {
-                      controller.updateSettings(
-                        settings.copyWith(
-                          keepScreenOnEnabled: !settings.keepScreenOnEnabled,
-                        ),
-                      );
-                    },
-                    onTogglePictureInPicture: onTogglePictureInPicture,
                     onUiHaptic: onUiHaptic,
                   ),
                 ),

@@ -105,7 +105,7 @@ void main() {
       localBackupAutoEnabled: true,
       localBackupAutoIntervalMinutes: 30,
       localBackupKeepCount: 10,
-      webDav: const WebDavSettings(
+      webDav: WebDavSettings(
         endpoint: 'https://dav.example.com/remote.php/dav',
         username: 'test',
         password: 'secret',
@@ -172,15 +172,18 @@ void main() {
     expect(restored.settings.focusMinutes, 25);
   });
 
-  test('timer snapshot fromJson falls back to settings duration on bad total', () {
-    const settings = AppSettings(focusMinutes: 25);
-    final snapshot = TimerSnapshot.fromJson({
-      'mode': 'focus',
-      'phase': 'idle',
-      'totalSeconds': 99999,
-      'remainingSeconds': 99999,
-    }, settings);
+  test(
+    'timer snapshot fromJson falls back to settings duration on bad total',
+    () {
+      const settings = AppSettings(focusMinutes: 25);
+      final snapshot = TimerSnapshot.fromJson({
+        'mode': 'focus',
+        'phase': 'idle',
+        'totalSeconds': 99999,
+        'remainingSeconds': 99999,
+      }, settings);
 
-    expect(snapshot.totalSeconds, 1500); // 25 * 60
-  });
+      expect(snapshot.totalSeconds, 1500); // 25 * 60
+    },
+  );
 }

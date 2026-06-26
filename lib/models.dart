@@ -422,7 +422,7 @@ class TimerSnapshot {
       return TimerSnapshot.initial(settings);
     }
     final mode = timerModeFromJson(value['mode']);
-    final total = _boundedInt(
+    final total = _boundedIntOrFallback(
       value['totalSeconds'],
       1,
       24 * 3600,
@@ -609,6 +609,19 @@ int _boundedInt(Object? value, int min, int max, int fallback) {
     _ => fallback,
   };
   return number.clamp(min, max);
+}
+
+int _boundedIntOrFallback(Object? value, int min, int max, int fallback) {
+  final number = switch (value) {
+    int item => item,
+    double item => item.round(),
+    String item => int.tryParse(item),
+    _ => null,
+  };
+  if (number == null || number < min || number > max) {
+    return fallback;
+  }
+  return number;
 }
 
 DateTime? _dateTimeOrNull(Object? value) {

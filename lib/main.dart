@@ -1,17 +1,17 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
 import 'app_controller.dart';
+import 'app_scope.dart';
 import 'models.dart';
 import 'pages/settings_page.dart';
 import 'pages/stats_page.dart';
 import 'pages/timer_page.dart';
 import 'platform_controls.dart';
 import 'utils.dart';
-import 'widgets/dock.dart';
+import 'widgets/focus_edge_nav.dart';
 
 void main() {
   runApp(const TomatoApp());
@@ -114,6 +114,7 @@ ThemeData _buildAppTheme(Brightness brightness) {
   return ThemeData(
     useMaterial3: true,
     colorScheme: scheme,
+    splashFactory: InkRipple.splashFactory,
     scaffoldBackgroundColor: dark
         ? const Color(0xFF151515)
         : const Color(0xFFF1F1F1),
@@ -180,26 +181,6 @@ Color _pageBackground({
   return Theme.of(context).scaffoldBackgroundColor;
 }
 
-class AppScope extends InheritedNotifier<AppController> {
-  const AppScope({
-    required AppController controller,
-    required super.child,
-    super.key,
-  }) : super(notifier: controller);
-
-  static AppController watch(BuildContext context) {
-    final scope = context.dependOnInheritedWidgetOfExactType<AppScope>();
-    assert(scope != null, 'AppScope not found in context');
-    return scope!.notifier!;
-  }
-
-  static AppController read(BuildContext context) {
-    final scope = context.getInheritedWidgetOfExactType<AppScope>();
-    assert(scope != null, 'AppScope not found in context');
-    return scope!.notifier!;
-  }
-}
-
 class TomatoHomePage extends StatefulWidget {
   const TomatoHomePage({super.key});
 
@@ -216,6 +197,7 @@ class _TomatoHomePageState extends State<TomatoHomePage>
   int _selectedIndex = 0;
   bool _settingsSubPageOpen = false;
   bool _statsSubPageOpen = false;
+  bool _navigationOpen = false;
   bool _chromeHidden = false;
   bool _inPictureInPicture = false;
   bool _pipTransitioning = false;
@@ -425,6 +407,7 @@ class _TomatoHomePageState extends State<TomatoHomePage>
     final timer = data.timer;
     final pipPreview = _inPictureInPicture || _pipTransitioning;
     final hideChrome =
+        !_navigationOpen &&
         (_chromeHidden || pipPreview) &&
         _selectedIndex == 0 &&
         timer.phase == TimerPhase.running;
@@ -433,58 +416,88 @@ class _TomatoHomePageState extends State<TomatoHomePage>
       selectedIndex: _selectedIndex,
       timerMode: timer.mode,
     );
-    final settingsSubPageActive = _selectedIndex == 2 && _settingsSubPageOpen;
-    final statsSubPageActive = _selectedIndex == 1 && _statsSubPageOpen;
     _syncSystemUi(context, pageBackground, immersive: hideChrome);
 
-    return Listener(
-      behavior: HitTestBehavior.translucent,
-      onPointerDown: (_) => _handleUserActivity(),
-      onPointerMove: (_) => _handleUserActivity(),
-      onPointerSignal: (_) => _handleUserActivity(),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOutCubic,
-        color: pageBackground,
-        child: Scaffold(
-          backgroundColor: Colors.transparent,
-          extendBody: true,
-          body: controller.loading
-              ? const Center(child: CircularProgressIndicator())
-              : Stack(
-                  children: [
-                    Positioned.fill(
-                      child: pipPreview
-                          ? _pageTransition(
-                              controller: controller,
-                              data: data,
-                              quiet: hideChrome,
-                              inPictureInPicture: true,
-                              expandFromPictureInPicture: false,
-                            )
-                          : SafeArea(
-                              top: true,
-                              bottom: false,
-                              child: _pageTransition(
+    return PopScope<void>(
+      canPop:
+          !_navigationOpen &&
+          (_selectedIndex == 0 || _settingsSubPageOpen || _statsSubPageOpen),
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) {
+          return;
+        }
+        if (_navigationOpen) {
+          _closeNavigation();
+          return;
+        }
+        if (_settingsSubPageOpen || _statsSubPageOpen) {
+          return;
+        }
+        if (_selectedIndex != 0) {
+          _selectPage(0);
+        }
+      },
+      child: Listener(
+        behavior: HitTestBehavior.translucent,
+        onPointerDown: (_) => _handleUserActivity(),
+        onPointerMove: (_) => _handleUserActivity(),
+        onPointerSignal: (_) => _handleUserActivity(),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 360),
+          curve: Curves.easeOutCubic,
+          color: pageBackground,
+          child: Scaffold(
+            backgroundColor: Colors.transparent,
+            extendBody: true,
+            body: controller.loading
+                ? const Center(child: CircularProgressIndicator())
+                : Stack(
+                    children: [
+                      Positioned.fill(
+                        child: pipPreview
+                            ? _pageTransition(
                                 controller: controller,
                                 data: data,
                                 quiet: hideChrome,
-                                inPictureInPicture: false,
-                                expandFromPictureInPicture:
-                                    _returningFromPictureInPicture,
+                                inPictureInPicture: true,
+                                expandFromPictureInPicture: false,
+                              )
+                            : SafeArea(
+                                top: true,
+                                bottom: false,
+                                child: _pageTransition(
+                                  controller: controller,
+                                  data: data,
+                                  quiet: hideChrome,
+                                  inPictureInPicture: false,
+                                  expandFromPictureInPicture:
+                                      _returningFromPictureInPicture,
+                                ),
                               ),
-                            ),
-                    ),
-                    if (!pipPreview &&
-                        !settingsSubPageActive &&
-                        !statsSubPageActive)
-                      FloatingDock(
-                        hidden: hideChrome,
-                        selectedIndex: _selectedIndex,
-                        onSelected: _selectPage,
                       ),
-                  ],
-                ),
+                      if (!pipPreview)
+                        FocusEdgeNav(
+                          open: _navigationOpen,
+                          visualHidden: hideChrome,
+                          selectedIndex: _selectedIndex,
+                          settings: data.settings,
+                          timer: timer,
+                          onOpen: _openNavigation,
+                          onClose: _closeNavigation,
+                          onSelected: _selectPage,
+                          onToggleKeepScreenOn: () {
+                            controller.updateSettings(
+                              data.settings.copyWith(
+                                keepScreenOnEnabled:
+                                    !data.settings.keepScreenOnEnabled,
+                              ),
+                            );
+                          },
+                          onTogglePictureInPicture: _togglePictureInPicture,
+                        ),
+                    ],
+                  ),
+          ),
         ),
       ),
     );
@@ -498,11 +511,30 @@ class _TomatoHomePageState extends State<TomatoHomePage>
     required bool expandFromPictureInPicture,
   }) {
     return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 60),
+      duration: MediaQuery.disableAnimationsOf(context)
+          ? const Duration(milliseconds: 80)
+          : const Duration(milliseconds: 300),
       switchInCurve: Curves.easeOutCubic,
       switchOutCurve: Curves.easeInCubic,
       transitionBuilder: (child, animation) {
-        return FadeTransition(opacity: animation, child: child);
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+          reverseCurve: Curves.easeInCubic,
+        );
+        return FadeTransition(
+          opacity: curved,
+          child: SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(0.025, 0),
+              end: Offset.zero,
+            ).animate(curved),
+            child: ScaleTransition(
+              scale: Tween<double>(begin: 0.985, end: 1).animate(curved),
+              child: child,
+            ),
+          ),
+        );
       },
       child: KeyedSubtree(
         key: ValueKey('$_selectedIndex-$inPictureInPicture'),
@@ -533,7 +565,6 @@ class _TomatoHomePageState extends State<TomatoHomePage>
           inPictureInPicture: inPictureInPicture,
           expandFromPictureInPicture: expandFromPictureInPicture,
           onRequestQuiet: _requestQuiet,
-          onTogglePictureInPicture: _togglePictureInPicture,
           onUiHaptic: _emitUiHaptic,
         );
       case 1:
@@ -555,19 +586,19 @@ class _TomatoHomePageState extends State<TomatoHomePage>
           inPictureInPicture: inPictureInPicture,
           expandFromPictureInPicture: expandFromPictureInPicture,
           onRequestQuiet: _requestQuiet,
-          onTogglePictureInPicture: _togglePictureInPicture,
           onUiHaptic: _emitUiHaptic,
         );
     }
   }
 
   void _selectPage(int index) {
-    if (_selectedIndex == index) {
+    if (_selectedIndex == index && !_navigationOpen) {
       return;
     }
     _emitUiHaptic();
     setState(() {
       _selectedIndex = index;
+      _navigationOpen = false;
       if (index != 2) {
         _settingsSubPageOpen = false;
       }
@@ -577,6 +608,28 @@ class _TomatoHomePageState extends State<TomatoHomePage>
       _chromeHidden = false;
     });
     _syncIdleChrome();
+  }
+
+  void _openNavigation() {
+    if (_navigationOpen) {
+      return;
+    }
+    _emitUiHaptic();
+    setState(() {
+      _navigationOpen = true;
+      _chromeHidden = false;
+    });
+    _syncIdleChrome(restart: true);
+  }
+
+  void _closeNavigation() {
+    if (!_navigationOpen) {
+      return;
+    }
+    setState(() {
+      _navigationOpen = false;
+    });
+    _syncIdleChrome(restart: true);
   }
 
   void _handleStatsSubPageChanged(bool open) {
@@ -604,6 +657,7 @@ class _TomatoHomePageState extends State<TomatoHomePage>
     }
     final controller = _controller;
     if (controller == null ||
+        _navigationOpen ||
         _selectedIndex != 0 ||
         controller.data.timer.phase != TimerPhase.running ||
         _chromeHidden) {
@@ -673,6 +727,9 @@ class _TomatoHomePageState extends State<TomatoHomePage>
     if (_inPictureInPicture || _pipTransitioning) {
       return;
     }
+    if (_navigationOpen) {
+      return;
+    }
     if (_chromeHidden) {
       setState(() {
         _chromeHidden = false;
@@ -688,6 +745,11 @@ class _TomatoHomePageState extends State<TomatoHomePage>
       return;
     }
     if (_inPictureInPicture) {
+      _idleChromeTimer?.cancel();
+      _idleChromeTimer = null;
+      return;
+    }
+    if (_navigationOpen) {
       _idleChromeTimer?.cancel();
       _idleChromeTimer = null;
       return;
