@@ -1190,9 +1190,11 @@ class _StatsSheetOverlay extends StatelessWidget {
                             child: _StatsSheetHeader(onClose: onClose),
                           ),
                           Expanded(
-                            child: StatsPage(
-                              data: data,
-                              onSubPageOpenChanged: onSubPageOpenChanged,
+                            child: RepaintBoundary(
+                              child: StatsPage(
+                                data: data,
+                                onSubPageOpenChanged: onSubPageOpenChanged,
+                              ),
                             ),
                           ),
                         ],

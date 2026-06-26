@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../app_controller.dart';
+import '../app_scope.dart';
 import '../hitokoto_service.dart';
 import '../models.dart';
 import '../utils.dart';
@@ -55,8 +56,8 @@ class TimerPage extends StatelessWidget {
       builder: (context, constraints) {
         final controlsBottom = 28.0 + MediaQuery.paddingOf(context).bottom;
         final bottomReserve = controlsBottom + 104;
-        // ponytail: push info closer to top for punch-hole screens
-        final ambientTop = (MediaQuery.paddingOf(context).top - 8.0).clamp(0.0, 50.0);
+        // ponytail: status bar hidden via immersive mode, place info at top edge
+        final ambientTop = 0.0;
         final quoteTop = (constraints.maxHeight * 0.072).clamp(42.0, 76.0);
         final maxRingDimension =
             math.min(
@@ -106,13 +107,11 @@ class TimerPage extends StatelessWidget {
                   offset: Offset(0, -MediaQuery.paddingOf(context).top / 2),
                   child: _PipReturnScale(
                   active: expandFromPictureInPicture,
-                  child: _TimerFace(
+                  child: TimerProgressRing(
+                    snapshot: timer,
+                    maxDimension: maxRingDimension,
+                    showInnerStatus: false,
                     oledMode: oledMode,
-                    child: TimerProgressRing(
-                      snapshot: timer,
-                      maxDimension: maxRingDimension,
-                      showInnerStatus: false,
-                    ),
                   ),
                 ),
                 ),
@@ -236,16 +235,17 @@ class _AmbientInfoLineState extends State<_AmbientInfoLine> {
           style: labelStyle,
         ),
         const Spacer(),
-        Flexible(
-          child: Align(
-            alignment: Alignment.centerRight,
-            child: _AmbientChip(
-              icon: _weatherIcon(_weather?.condition),
-              label: _weather == null ? '--' : '${_weather!.temperatureC}°',
-              style: labelStyle,
+        if (AppScope.read(context).data.settings.weatherEnabled)
+          Flexible(
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: _AmbientChip(
+                icon: _weatherIcon(_weather?.condition),
+                label: _weather == null ? '--' : '${_weather!.temperatureC}°',
+                style: labelStyle,
+              ),
             ),
           ),
-        ),
       ],
     );
   }
@@ -310,30 +310,6 @@ IconData _weatherIcon(String? condition) {
     '雨' || '阵雨' || '毛毛雨' => Icons.water_drop_outlined,
     _ => Icons.wb_cloudy_outlined,
   };
-}
-
-class _TimerFace extends StatelessWidget {
-  const _TimerFace({required this.oledMode, required this.child});
-
-  final bool oledMode;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    if (!oledMode) {
-      return child;
-    }
-    final theme = Theme.of(context);
-    return Theme(
-      data: theme.copyWith(
-        colorScheme: theme.colorScheme.copyWith(
-          onSurface: Colors.white,
-          onSurfaceVariant: Colors.white70,
-        ),
-      ),
-      child: child,
-    );
-  }
 }
 
 class _PhasePill extends StatelessWidget {

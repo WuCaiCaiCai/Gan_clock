@@ -28,7 +28,7 @@ class SettingsPage extends StatefulWidget {
 class _SettingsPageState extends State<SettingsPage> {
   int _subPage = 0;
 
-  static const _pages = ['', '计时与待机', '切换提醒', '外观', '备份'];
+  static const _pages = ['', '计时与待机', '切换提醒', '外观', '备份', '天气'];
 
   @override
   void dispose() {
@@ -131,15 +131,15 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
             const SizedBox(height: 14),
             _SettingsSection(
-              icon: Icons.folder_copy_outlined,
-              title: '数据',
+              icon: Icons.cloud_outlined,
+              title: '天气',
               children: [
                 ListTile(
-                  leading: const Icon(Icons.folder_copy_outlined),
-                  title: const Text('备份'),
-                  subtitle: const Text('本地备份与恢复'),
+                  leading: const Icon(Icons.wb_sunny_outlined),
+                  title: const Text('天气显示'),
+                  subtitle: Text(settings.weatherEnabled ? '已开启' : '已关闭'),
                   trailing: const Icon(Icons.chevron_right),
-                  onTap: () => _openSubPage(4),
+                  onTap: () => _openSubPage(5),
                 ),
               ],
             ),
@@ -194,6 +194,8 @@ class _SettingsPageState extends State<SettingsPage> {
         return const _AppearanceSettingsContent();
       case 4:
         return const _BackupContent();
+      case 5:
+        return const _WeatherSettingsContent();
       default:
         return const SizedBox.shrink();
     }
@@ -956,6 +958,73 @@ class _NumberStepperState extends State<NumberStepper> {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _WeatherSettingsContent extends StatelessWidget {
+  const _WeatherSettingsContent();
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = AppScope.read(context);
+    final settings = controller.data.settings;
+
+    return _SettingsSubPageScaffold(
+      children: [
+        Card(
+          child: Column(
+            children: [
+              SwitchListTile(
+                contentPadding: const EdgeInsets.fromLTRB(16, 4, 12, 4),
+                secondary: const Icon(Icons.wb_sunny_outlined),
+                title: const Text('显示天气'),
+                subtitle: const Text('在计时页顶部显示当前温度'),
+                value: settings.weatherEnabled,
+                onChanged: (value) {
+                  controller.updateSettings(
+                    settings.copyWith(weatherEnabled: value),
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+        Card(
+          child: Column(
+            children: [
+              ListTile(
+                contentPadding: const EdgeInsets.fromLTRB(16, 4, 12, 4),
+                leading: const Icon(Icons.location_on_outlined),
+                title: const Text('定位权限'),
+                subtitle: const Text('获取设备位置以显示本地天气'),
+                trailing: FilledButton.tonalIcon(
+                  onPressed: () async {
+                    final granted =
+                        await PlatformControls.requestLocationPermission();
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context)
+                        ..hideCurrentSnackBar()
+                        ..showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              granted ? '定位权限已获取' : '定位权限被拒绝，请在系统设置中开启',
+                            ),
+                          ),
+                        );
+                      if (!granted) {
+                        await PlatformControls.openLocationSettings();
+                      }
+                    }
+                  },
+                  icon: const Icon(Icons.gps_fixed, size: 18),
+                  label: const Text('请求权限'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
