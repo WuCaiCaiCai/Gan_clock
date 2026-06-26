@@ -461,15 +461,9 @@ class _HitokotoLineState extends State<_HitokotoLine> {
       duration: const Duration(milliseconds: 220),
       switchInCurve: Curves.easeOutCubic,
       switchOutCurve: Curves.easeInCubic,
-      child: Container(
+      child: Padding(
         key: ValueKey('${widget.mode.name}-$message'),
-        constraints: const BoxConstraints(maxWidth: 342),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          color: scheme.surface.withAlpha(190),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: palette.accent.withAlpha(72)),
-        ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
