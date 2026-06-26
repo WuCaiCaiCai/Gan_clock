@@ -1071,7 +1071,7 @@ class _TimerDeck extends StatelessWidget {
         margin: EdgeInsets.fromLTRB(0, 0, 0, active ? 16 : 0),
         decoration: BoxDecoration(
           color: background,
-          borderRadius: BorderRadius.circular(active ? 28 : 0),
+          borderRadius: BorderRadius.circular(active ? 10 : 0),
           boxShadow: active
               ? [
                   BoxShadow(
@@ -1125,9 +1125,10 @@ class _StatsSheetOverlay extends StatelessWidget {
             child: Column(
               children: [
                 SafeArea(
+                  top: false,
                   bottom: false,
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 12, 4),
+                    padding: const EdgeInsets.fromLTRB(16, 8, 12, 0),
                     child: Row(
                       children: [
                         Text(
@@ -1136,24 +1137,28 @@ class _StatsSheetOverlay extends StatelessWidget {
                               ?.copyWith(fontWeight: FontWeight.w600),
                         ),
                         const Spacer(),
-                        IconButton(
-                          tooltip: '关闭',
-                          icon: const Icon(Icons.close),
-                          onPressed: onClose,
+                        Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              tooltip: '关闭',
+                              icon: const Icon(Icons.close),
+                              onPressed: onClose,
+                            ),
+                            // ponytail: ring mask below X button
+                            CustomPaint(
+                              size: const Size(36, 36),
+                              painter: _StatsRingMask(
+                                color: scheme.outlineVariant.withAlpha(50),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
                   ),
                 ),
                 const SizedBox(height: 8),
-                // ponytail: decorative ring mask as visual bridge
-                CustomPaint(
-                  size: const Size(80, 80),
-                  painter: _StatsRingMask(
-                    color: scheme.outlineVariant.withAlpha(40),
-                  ),
-                ),
-                const SizedBox(height: 12),
                 Expanded(
                 child: RepaintBoundary(
                   child: StatsPage(

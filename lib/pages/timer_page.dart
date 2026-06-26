@@ -80,8 +80,8 @@ class TimerPage extends StatelessWidget {
           child: Stack(
             children: [
               Positioned(
-                left: 22,
-                right: 22,
+                left: 8,
+                right: 8,
                 top: ambientTop,
                 child: ChromeFade(
                   hidden: pureDisplay,
@@ -467,7 +467,7 @@ class _HitokotoLineState extends State<_HitokotoLine> {
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
           color: scheme.surface.withAlpha(190),
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(10),
           border: Border.all(color: palette.accent.withAlpha(72)),
         ),
         child: Row(
