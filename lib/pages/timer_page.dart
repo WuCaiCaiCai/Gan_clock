@@ -57,7 +57,7 @@ class TimerPage extends StatelessWidget {
         final controlsBottom = 28.0 + MediaQuery.paddingOf(context).bottom;
         final bottomReserve = controlsBottom + 104;
         // ponytail: small top margin so chip doesn't touch screen edge
-        final ambientTop = 10.0;
+        final ambientTop = 14.0;
         final quoteTop = (constraints.maxHeight * 0.072).clamp(42.0, 76.0);
         final maxRingDimension =
             math.min(

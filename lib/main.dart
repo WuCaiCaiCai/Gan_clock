@@ -478,7 +478,7 @@ class _TomatoHomePageState extends State<TomatoHomePage>
                                 child: _selectedIndex == 0
                                     ? _TimerDeck(
                                         active: _statsSheetVisible,
-                                        background: normalPageBackground,
+                                        background: pageBackground,
                                         child: _pageTransition(
                                           controller: controller,
                                           data: data,
@@ -1112,105 +1112,54 @@ class _StatsSheetOverlay extends StatelessWidget {
     final duration = motionDisabled
         ? const Duration(milliseconds: 80)
         : const Duration(milliseconds: 280);
-    final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
 
     return Positioned.fill(
-      child: Stack(
-        children: [
-          // ponytail: mask stays at full opacity, only removed when widget unmounts
-          Positioned.fill(
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: visible ? onClose : null,
-              child: ColoredBox(color: Colors.black.withAlpha(54)),
-            ),
-          ),
-          Align(
-            alignment: Alignment.bottomCenter,
-            child: AnimatedSlide(
-              offset: visible ? Offset.zero : const Offset(0, 1),
-              duration: duration,
-              curve: visible ? Curves.easeOutCubic : Curves.easeInCubic,
-              onEnd: onAnimationEnd,
-              child: SafeArea(
-                top: false,
-                minimum: EdgeInsets.only(bottom: bottomInset > 0 ? 0 : 10),
-                child: FractionallySizedBox(
-                  heightFactor: 0.88,
-                  alignment: Alignment.bottomCenter,
-                  child: Material(
-                    color: scheme.surface,
-                    elevation: 0,
-                    borderRadius: const BorderRadius.vertical(
-                      top: Radius.circular(24),
-                    ),
-                    clipBehavior: Clip.antiAlias,
-                    child: Column(
-                      children: [
-                        _StatsSheetHeader(onClose: onClose),
-                        Expanded(
-                          child: RepaintBoundary(
-                            child: StatsPage(
-                              data: data,
-                              onSubPageOpenChanged: onSubPageOpenChanged,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _StatsSheetHeader extends StatelessWidget {
-  const _StatsSheetHeader({required this.onClose});
-
-  final VoidCallback onClose;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
-      child: Column(
-        children: [
-          Container(
-            width: 42,
-            height: 4,
-            decoration: BoxDecoration(
-              color: scheme.outlineVariant,
-              borderRadius: BorderRadius.circular(999),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Row(
+      child: AnimatedOpacity(
+        opacity: visible ? 1 : 0,
+        duration: duration,
+        onEnd: onAnimationEnd,
+        child: IgnorePointer(
+          ignoring: !visible,
+          child: Column(
             children: [
-              const SizedBox(width: 48),
-              Expanded(
-                child: Text(
-                  '统计',
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
+              SafeArea(
+                bottom: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
+                  child: Row(
+                    children: [
+                      const SizedBox(width: 48),
+                      Expanded(
+                        child: Text(
+                          '统计',
+                          textAlign: TextAlign.center,
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: '关闭',
+                        icon: const Icon(Icons.close),
+                        onPressed: onClose,
+                      ),
+                    ],
                   ),
                 ),
               ),
-              IconButton(
-                tooltip: '关闭',
-                icon: const Icon(Icons.close),
-                onPressed: onClose,
+              Expanded(
+                child: RepaintBoundary(
+                  child: ColoredBox(
+                    color: scheme.surface,
+                    child: StatsPage(
+                      data: data,
+                      onSubPageOpenChanged: onSubPageOpenChanged,
+                    ),
+                  ),
+                ),
               ),
             ],
           ),
-        ],
+        ),
       ),
     );
   }
