@@ -102,18 +102,16 @@ class TimerPage extends StatelessWidget {
                 ),
               ),
               Center(
-                child: Transform.translate(
-                  // ponytail: compensate SafeArea top so ring is visually centered on punch-hole screens
-                  offset: Offset(0, -MediaQuery.paddingOf(context).top / 2),
-                  child: _PipReturnScale(
+                child: _PipReturnScale(
                   active: expandFromPictureInPicture,
-                  child: TimerProgressRing(
-                    snapshot: timer,
-                    maxDimension: maxRingDimension,
-                    showInnerStatus: false,
+                  child: _TimerFace(
                     oledMode: oledMode,
+                    child: TimerProgressRing(
+                      snapshot: timer,
+                      maxDimension: maxRingDimension,
+                      showInnerStatus: false,
+                    ),
                   ),
-                ),
                 ),
               ),
               Positioned(
@@ -310,6 +308,30 @@ IconData _weatherIcon(String? condition) {
     '雨' || '阵雨' || '毛毛雨' => Icons.water_drop_outlined,
     _ => Icons.wb_cloudy_outlined,
   };
+}
+
+class _TimerFace extends StatelessWidget {
+  const _TimerFace({required this.oledMode, required this.child});
+
+  final bool oledMode;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!oledMode) {
+      return child;
+    }
+    final theme = Theme.of(context);
+    return Theme(
+      data: theme.copyWith(
+        colorScheme: theme.colorScheme.copyWith(
+          onSurface: Colors.white,
+          onSurfaceVariant: Colors.white70,
+        ),
+      ),
+      child: child,
+    );
+  }
 }
 
 class _PhasePill extends StatelessWidget {

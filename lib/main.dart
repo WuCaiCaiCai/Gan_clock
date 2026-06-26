@@ -474,7 +474,7 @@ class _TomatoHomePageState extends State<TomatoHomePage>
                                 expandFromPictureInPicture: false,
                               )
                             : SafeArea(
-                                top: true,
+                                top: _selectedIndex != 0,
                                 bottom: false,
                                 child: _selectedIndex == 0
                                     ? _TimerDeck(
@@ -1142,70 +1142,68 @@ class _StatsSheetOverlay extends StatelessWidget {
     final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
 
     return Positioned.fill(
-      child: IgnorePointer(
-        ignoring: !visible,
-        child: Align(
-          alignment: Alignment.bottomCenter,
-          child: AnimatedSlide(
-            offset: visible ? Offset.zero : const Offset(0, 1),
-            duration: duration,
-            curve: visible ? Curves.easeOutCubic : Curves.easeInCubic,
-            onEnd: onAnimationEnd,
-            child: Column(
-              children: [
-                Expanded(
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: onClose,
-                    child: ColoredBox(color: Colors.black.withAlpha(54)),
-                  ),
-                ),
-                SafeArea(
-                  top: false,
-                  minimum: EdgeInsets.only(bottom: bottomInset > 0 ? 0 : 10),
-                  child: FractionallySizedBox(
-                    heightFactor: 0.88,
-                    alignment: Alignment.bottomCenter,
-                    child: Material(
-                      color: scheme.surface,
-                      elevation: 0,
-                      borderRadius: const BorderRadius.vertical(
-                        top: Radius.circular(24),
-                      ),
-                      clipBehavior: Clip.antiAlias,
-                      child: Column(
-                        children: [
-                          GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onVerticalDragStart: (_) => onDragStart(),
-                            onVerticalDragUpdate: (details) {
-                              onDragUpdate(details.primaryDelta ?? 0);
-                            },
-                            onVerticalDragEnd: (details) {
-                              final velocity = details.primaryVelocity ?? 0;
-                              if (velocity > 520) {
-                                onClose();
-                              }
-                            },
-                            child: _StatsSheetHeader(onClose: onClose),
-                          ),
-                          Expanded(
-                            child: RepaintBoundary(
-                              child: StatsPage(
-                                data: data,
-                                onSubPageOpenChanged: onSubPageOpenChanged,
-                              ),
+      child: Stack(
+        children: [
+          // ponytail: mask stays at full opacity, only removed when widget unmounts
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: visible ? onClose : null,
+              child: ColoredBox(color: Colors.black.withAlpha(54)),
+            ),
+          ),
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: AnimatedSlide(
+              offset: visible ? Offset.zero : const Offset(0, 1),
+              duration: duration,
+              curve: visible ? Curves.easeOutCubic : Curves.easeInCubic,
+              onEnd: onAnimationEnd,
+              child: SafeArea(
+                top: false,
+                minimum: EdgeInsets.only(bottom: bottomInset > 0 ? 0 : 10),
+                child: FractionallySizedBox(
+                  heightFactor: 0.88,
+                  alignment: Alignment.bottomCenter,
+                  child: Material(
+                    color: scheme.surface,
+                    elevation: 0,
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(24),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: Column(
+                      children: [
+                        GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onVerticalDragStart: (_) => onDragStart(),
+                          onVerticalDragUpdate: (details) {
+                            onDragUpdate(details.primaryDelta ?? 0);
+                          },
+                          onVerticalDragEnd: (details) {
+                            final velocity = details.primaryVelocity ?? 0;
+                            if (velocity > 520) {
+                              onClose();
+                            }
+                          },
+                          child: _StatsSheetHeader(onClose: onClose),
+                        ),
+                        Expanded(
+                          child: RepaintBoundary(
+                            child: StatsPage(
+                              data: data,
+                              onSubPageOpenChanged: onSubPageOpenChanged,
                             ),
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
-              ],
+              ),
             ),
           ),
-        ),
+        ],
       ),
     );
   }

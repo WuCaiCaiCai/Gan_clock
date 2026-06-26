@@ -11,7 +11,6 @@ class TimerProgressRing extends StatefulWidget {
     required this.maxDimension,
     this.compact = false,
     this.showInnerStatus = true,
-    this.oledMode = false,
     this.surfaceKey,
     super.key,
   });
@@ -20,7 +19,6 @@ class TimerProgressRing extends StatefulWidget {
   final double maxDimension;
   final bool compact;
   final bool showInnerStatus;
-  final bool oledMode;
   final Key? surfaceKey;
 
   @override
@@ -100,11 +98,6 @@ class _TimerProgressRingState extends State<TimerProgressRing>
     final textTheme = theme.textTheme;
     final scheme = theme.colorScheme;
     final palette = modePalette(widget.snapshot.mode);
-    final oled = widget.oledMode;
-    final accentColor = oled ? Colors.white : palette.accent;
-    final textColor = oled ? Colors.white : scheme.onSurface;
-    final textSubColor = oled ? Colors.white70 : scheme.onSurfaceVariant;
-    final trackAlpha = oled ? 38 : (scheme.brightness == Brightness.dark ? 76 : 52);
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -157,8 +150,10 @@ class _TimerProgressRingState extends State<TimerProgressRing>
                           return CustomPaint(
                             painter: _RingPainter(
                               progress: value,
-                              color: accentColor,
-                              trackColor: accentColor.withAlpha(trackAlpha),
+                              color: palette.accent,
+                              trackColor: palette.accent.withAlpha(
+                                scheme.brightness == Brightness.dark ? 76 : 52,
+                              ),
                               haloOpacity: _haloAnimation.value,
                               strokeWidth: stroke,
                             ),
@@ -178,7 +173,7 @@ class _TimerProgressRingState extends State<TimerProgressRing>
                                     child: Icon(
                                      modeIcon(widget.snapshot.mode),
                                      key: ValueKey(widget.snapshot.mode),
-                                     color: accentColor,
+                                     color: palette.accent,
                                      size: 30,
                                   ),
                                 ),
@@ -197,7 +192,7 @@ class _TimerProgressRingState extends State<TimerProgressRing>
                                     fontWeight: FontWeight.w800,
                                     color: widget.compact
                                         ? compactTextColor
-                                        : textColor,
+                                        : scheme.onSurface,
                                     fontFeatures: const [
                                       FontFeature.tabularFigures(),
                                     ],
@@ -213,7 +208,7 @@ class _TimerProgressRingState extends State<TimerProgressRing>
                                     phaseLabel(widget.snapshot.phase),
                                     key: ValueKey(widget.snapshot.phase),
                                     style: textTheme.titleSmall?.copyWith(
-                                      color: textSubColor,
+                                      color: scheme.onSurfaceVariant,
                                       letterSpacing: 0,
                                     ),
                                   ),

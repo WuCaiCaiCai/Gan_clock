@@ -131,6 +131,20 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
             const SizedBox(height: 14),
             _SettingsSection(
+              icon: Icons.folder_copy_outlined,
+              title: '数据',
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.folder_copy_outlined),
+                  title: const Text('备份'),
+                  subtitle: const Text('本地备份与恢复'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => _openSubPage(4),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            _SettingsSection(
               icon: Icons.cloud_outlined,
               title: '天气',
               children: [
