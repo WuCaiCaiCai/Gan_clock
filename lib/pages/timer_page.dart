@@ -77,18 +77,6 @@ class TimerPage extends StatelessWidget {
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: onRequestQuiet,
-          onVerticalDragUpdate: (details) {
-            final delta = details.primaryDelta ?? 0;
-            if (delta < -10) {
-              onOpenStats();
-            }
-          },
-          onVerticalDragEnd: (details) {
-            final velocity = details.primaryVelocity ?? 0;
-            if (velocity < -260) {
-              onOpenStats();
-            }
-          },
           child: Stack(
             children: [
               Positioned(
@@ -102,7 +90,14 @@ class TimerPage extends StatelessWidget {
                 ),
               ),
               Center(
-                child: _PipReturnScale(
+                child: GestureDetector(
+                  // ponytail: tap ring to open stats when not running
+                  onTap: () {
+                    if (timer.phase != TimerPhase.running) {
+                      onOpenStats();
+                    }
+                  },
+                  child: _PipReturnScale(
                   active: expandFromPictureInPicture,
                   child: _TimerFace(
                     oledMode: oledMode,
@@ -110,8 +105,10 @@ class TimerPage extends StatelessWidget {
                       snapshot: timer,
                       maxDimension: maxRingDimension,
                       showInnerStatus: false,
+                      oledMode: oledMode,
                     ),
                   ),
+                ),
                 ),
               ),
               Positioned(

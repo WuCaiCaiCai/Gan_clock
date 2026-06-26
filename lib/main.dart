@@ -199,7 +199,6 @@ class _TomatoHomePageState extends State<TomatoHomePage>
   int _selectedIndex = 0;
   bool _statsSheetMounted = false;
   bool _statsSheetVisible = false;
-  double _statsSheetDragDistance = 0;
   bool _settingsSubPageOpen = false;
   bool _statsSubPageOpen = false;
   bool _chromeHidden = false;
@@ -509,8 +508,6 @@ class _TomatoHomePageState extends State<TomatoHomePage>
                           data: data,
                           onClose: _closeStatsSheet,
                           onAnimationEnd: _handleStatsSheetAnimationEnd,
-                          onDragStart: _handleStatsSheetDragStart,
-                          onDragUpdate: _handleStatsSheetDragUpdate,
                           onSubPageOpenChanged: _handleStatsSubPageChanged,
                         ),
                     ],
@@ -629,7 +626,6 @@ class _TomatoHomePageState extends State<TomatoHomePage>
     _emitUiHaptic();
     setState(() {
       _selectedIndex = index;
-      _statsSheetDragDistance = 0;
       _statsSheetVisible = false;
       _statsSheetMounted = false;
       _statsSubPageOpen = false;
@@ -657,7 +653,6 @@ class _TomatoHomePageState extends State<TomatoHomePage>
     setState(() {
       _statsSheetMounted = true;
       _statsSheetVisible = true;
-      _statsSheetDragDistance = 0;
       _chromeHidden = false;
       _oledMode = false;
     });
@@ -671,7 +666,6 @@ class _TomatoHomePageState extends State<TomatoHomePage>
     _emitUiHaptic();
     setState(() {
       _statsSheetVisible = false;
-      _statsSheetDragDistance = 0;
       _statsSubPageOpen = false;
     });
     _syncIdleChrome(restart: true);
@@ -684,23 +678,6 @@ class _TomatoHomePageState extends State<TomatoHomePage>
     setState(() {
       _statsSheetMounted = false;
     });
-  }
-
-  void _handleStatsSheetDragStart() {
-    _statsSheetDragDistance = 0;
-  }
-
-  void _handleStatsSheetDragUpdate(double delta) {
-    if (!_statsSheetVisible) {
-      return;
-    }
-    _statsSheetDragDistance += delta;
-    if (_statsSheetDragDistance < 0) {
-      _statsSheetDragDistance = 0;
-    }
-    if (_statsSheetDragDistance > 72) {
-      _closeStatsSheet();
-    }
   }
 
   void _toggleKeepScreenOn() {
@@ -1119,8 +1096,6 @@ class _StatsSheetOverlay extends StatelessWidget {
     required this.data,
     required this.onClose,
     required this.onAnimationEnd,
-    required this.onDragStart,
-    required this.onDragUpdate,
     required this.onSubPageOpenChanged,
   });
 
@@ -1128,8 +1103,6 @@ class _StatsSheetOverlay extends StatelessWidget {
   final TomatoData data;
   final VoidCallback onClose;
   final VoidCallback onAnimationEnd;
-  final VoidCallback onDragStart;
-  final ValueChanged<double> onDragUpdate;
   final ValueChanged<bool> onSubPageOpenChanged;
 
   @override
@@ -1174,20 +1147,7 @@ class _StatsSheetOverlay extends StatelessWidget {
                     clipBehavior: Clip.antiAlias,
                     child: Column(
                       children: [
-                        GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onVerticalDragStart: (_) => onDragStart(),
-                          onVerticalDragUpdate: (details) {
-                            onDragUpdate(details.primaryDelta ?? 0);
-                          },
-                          onVerticalDragEnd: (details) {
-                            final velocity = details.primaryVelocity ?? 0;
-                            if (velocity > 520) {
-                              onClose();
-                            }
-                          },
-                          child: _StatsSheetHeader(onClose: onClose),
-                        ),
+                        _StatsSheetHeader(onClose: onClose),
                         Expanded(
                           child: RepaintBoundary(
                             child: StatsPage(

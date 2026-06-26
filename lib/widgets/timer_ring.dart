@@ -11,6 +11,7 @@ class TimerProgressRing extends StatefulWidget {
     required this.maxDimension,
     this.compact = false,
     this.showInnerStatus = true,
+    this.oledMode = false,
     this.surfaceKey,
     super.key,
   });
@@ -19,6 +20,7 @@ class TimerProgressRing extends StatefulWidget {
   final double maxDimension;
   final bool compact;
   final bool showInnerStatus;
+  final bool oledMode;
   final Key? surfaceKey;
 
   @override
@@ -98,6 +100,7 @@ class _TimerProgressRingState extends State<TimerProgressRing>
     final textTheme = theme.textTheme;
     final scheme = theme.colorScheme;
     final palette = modePalette(widget.snapshot.mode);
+    final oled = widget.oledMode;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -150,10 +153,12 @@ class _TimerProgressRingState extends State<TimerProgressRing>
                           return CustomPaint(
                             painter: _RingPainter(
                               progress: value,
-                              color: palette.accent,
-                              trackColor: palette.accent.withAlpha(
-                                scheme.brightness == Brightness.dark ? 76 : 52,
-                              ),
+                              color: oled ? Colors.white : palette.accent,
+                              trackColor: oled
+                                  ? Colors.white24
+                                  : palette.accent.withAlpha(
+                                      scheme.brightness == Brightness.dark ? 76 : 52,
+                                    ),
                               haloOpacity: _haloAnimation.value,
                               strokeWidth: stroke,
                             ),
