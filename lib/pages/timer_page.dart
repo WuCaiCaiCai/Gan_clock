@@ -85,7 +85,6 @@ class TimerPage extends StatelessWidget {
                 top: ambientTop,
                 child: ChromeFade(
                   hidden: pureDisplay,
-                  slideOffset: const Offset(0, -0.08),
                   child: const _AmbientInfoLine(),
                 ),
               ),

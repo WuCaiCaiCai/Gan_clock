@@ -1120,11 +1120,13 @@ class _StatsSheetOverlay extends StatelessWidget {
         onEnd: onAnimationEnd,
         child: IgnorePointer(
           ignoring: !visible,
-          child: Column(
-            children: [
-              SafeArea(
-                bottom: false,
-                child: Padding(
+          child: ColoredBox(
+            color: scheme.surface,
+            child: Column(
+              children: [
+                SafeArea(
+                  bottom: false,
+                  child: Padding(
                   padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
                   child: Row(
                     children: [
@@ -1148,16 +1150,14 @@ class _StatsSheetOverlay extends StatelessWidget {
               ),
               Expanded(
                 child: RepaintBoundary(
-                  child: ColoredBox(
-                    color: scheme.surface,
-                    child: StatsPage(
-                      data: data,
-                      onSubPageOpenChanged: onSubPageOpenChanged,
-                    ),
+                  child: StatsPage(
+                    data: data,
+                    onSubPageOpenChanged: onSubPageOpenChanged,
                   ),
                 ),
               ),
             ],
+          ),
           ),
         ),
       ),
