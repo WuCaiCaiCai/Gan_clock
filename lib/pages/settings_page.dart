@@ -976,8 +976,29 @@ class _NumberStepperState extends State<NumberStepper> {
   }
 }
 
-class _WeatherSettingsContent extends StatelessWidget {
+class _WeatherSettingsContent extends StatefulWidget {
   const _WeatherSettingsContent();
+
+  @override
+  State<_WeatherSettingsContent> createState() => _WeatherSettingsContentState();
+}
+
+class _WeatherSettingsContentState extends State<_WeatherSettingsContent> {
+  late final TextEditingController _cityController;
+
+  @override
+  void initState() {
+    super.initState();
+    _cityController = TextEditingController(
+      text: AppScope.read(context).data.settings.weatherCity,
+    );
+  }
+
+  @override
+  void dispose() {
+    _cityController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1005,13 +1026,43 @@ class _WeatherSettingsContent extends StatelessWidget {
           ),
         ),
         Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('固定城市',
+                  style: Theme.of(context).textTheme.titleSmall
+                      ?.copyWith(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _cityController,
+                  decoration: const InputDecoration(
+                    hintText: '输入城市名，如 长安区',
+                    prefixIcon: Icon(Icons.search),
+                    border: OutlineInputBorder(),
+                  ),
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (_) => _saveCity(),
+                ),
+                const SizedBox(height: 8),
+                FilledButton.tonalIcon(
+                  onPressed: _saveCity,
+                  icon: const Icon(Icons.check, size: 18),
+                  label: const Text('搜索并固定'),
+                ),
+              ],
+            ),
+          ),
+        ),
+        Card(
           child: Column(
             children: [
               ListTile(
                 contentPadding: const EdgeInsets.fromLTRB(16, 4, 12, 4),
                 leading: const Icon(Icons.location_on_outlined),
                 title: const Text('定位权限'),
-                subtitle: const Text('获取设备位置以显示本地天气'),
+                subtitle: const Text('未设置固定城市时，自动通过 IP 获取位置'),
                 trailing: FilledButton.tonalIcon(
                   onPressed: () async {
                     final granted =
@@ -1022,7 +1073,7 @@ class _WeatherSettingsContent extends StatelessWidget {
                         ..showSnackBar(
                           SnackBar(
                             content: Text(
-                              granted ? '定位权限已获取' : '定位权限被拒绝，请在系统设置中开启',
+                              granted ? '定位权限已获取' : '定位权限被拒绝',
                             ),
                           ),
                         );
@@ -1040,5 +1091,17 @@ class _WeatherSettingsContent extends StatelessWidget {
         ),
       ],
     );
+  }
+
+  void _saveCity() {
+    final city = _cityController.text.trim();
+    AppScope.read(context).updateSettings(
+      AppScope.read(context).data.settings.copyWith(weatherCity: city),
+    );
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text(city.isEmpty ? '已清除固定城市，将自动定位' : '已固定到 $city'),
+      ));
   }
 }

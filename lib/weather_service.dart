@@ -25,7 +25,13 @@ class WeatherService {
   static WeatherSnapshot? _cached;
   static Future<WeatherSnapshot?>? _pending;
 
-  Future<WeatherSnapshot?> fetch() {
+  Future<WeatherSnapshot?> fetch({String? city}) {
+    final effectiveCity = city?.trim();
+    if (effectiveCity != null && effectiveCity.isNotEmpty) {
+      // ponytail: manual city overrides IP geolocation, bypass cache
+      _pending = _fetchForCity(effectiveCity);
+      return _pending!;
+    }
     final cached = _cached;
     if (cached != null) {
       return Future.value(cached);
@@ -37,6 +43,49 @@ class WeatherService {
     });
   }
 
+  Future<WeatherSnapshot?> _fetchForCity(String city) async {
+    final coords = await _geocode(city);
+    if (coords == null) return null;
+    final weather = await _fetchWeather(coords.latitude, coords.longitude);
+    if (weather == null) return null;
+    final result = WeatherSnapshot(
+      place: city,
+      temperatureC: weather.temperatureC,
+      condition: weather.condition,
+    );
+    _cached = result;
+    _pending = null;
+    return result;
+  }
+
+  Future<_WeatherLocation?> _geocode(String city) async {
+    final client = HttpClient();
+    try {
+      final uri = Uri.https('nominatim.openstreetmap.org', '/search', {
+        'q': city,
+        'format': 'json',
+        'limit': '1',
+        'accept-language': 'zh',
+      });
+      final request = await client.getUrl(uri).timeout(const Duration(seconds: 4));
+      request.headers.set(HttpHeaders.acceptHeader, 'application/json');
+      final httpResponse = await request.close().timeout(const Duration(seconds: 4));
+      final raw = await httpResponse.transform(utf8.decoder).join();
+      final decoded = jsonDecode(raw);
+      if (decoded is! List || decoded.isEmpty) return null;
+      final place = decoded[0];
+      if (place is! Map<String, Object?>) return null;
+      final lat = _doubleOrNull(place['lat']);
+      final lon = _doubleOrNull(place['lon']);
+      if (lat == null || lon == null) return null;
+      return _WeatherLocation(latitude: lat, longitude: lon, city: city);
+    } on Object {
+      return null;
+    } finally {
+      client.close(force: true);
+    }
+  }
+
   Future<WeatherSnapshot?> _fetchFresh() async {
     final location = await _fetchLocation();
     if (location == null) {
@@ -44,7 +93,7 @@ class WeatherService {
     }
     final district = await _reverseGeocode(location.latitude, location.longitude);
     final place = district ?? location.city;
-    final weather = await _fetchWeather(location);
+    final weather = await _fetchWeather(location.latitude, location.longitude);
     if (weather == null) return null;
     return WeatherSnapshot(
       place: place,
@@ -99,10 +148,10 @@ class WeatherService {
     }
   }
 
-  Future<WeatherSnapshot?> _fetchWeather(_WeatherLocation location) async {
+  Future<WeatherSnapshot?> _fetchWeather(double latitude, double longitude) async {
     final uri = Uri.https('api.open-meteo.com', '/v1/forecast', {
-      'latitude': location.latitude.toStringAsFixed(4),
-      'longitude': location.longitude.toStringAsFixed(4),
+      'latitude': latitude.toStringAsFixed(4),
+      'longitude': longitude.toStringAsFixed(4),
       'current': 'temperature_2m,weather_code',
       'timezone': 'auto',
     });
@@ -117,7 +166,7 @@ class WeatherService {
       return null;
     }
     return WeatherSnapshot(
-      place: location.city,
+      place: '',
       temperatureC: temperature.round(),
       condition: _weatherLabel(code),
     );

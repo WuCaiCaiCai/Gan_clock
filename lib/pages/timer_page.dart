@@ -54,17 +54,17 @@ class TimerPage extends StatelessWidget {
     final pureDisplay = quiet || oledMode;
     return LayoutBuilder(
       builder: (context, constraints) {
+        final landscape = constraints.maxWidth > constraints.maxHeight;
         final controlsBottom = 28.0 + MediaQuery.paddingOf(context).bottom;
-        final bottomReserve = controlsBottom + 104;
-        // ponytail: small top margin so chip doesn't touch screen edge
-        final ambientTop = 14.0;
-        final quoteTop = (constraints.maxHeight * 0.072).clamp(42.0, 76.0);
-        final maxRingDimension =
-            math.min(
-              344.0,
-              math.max(216.0, constraints.maxHeight - quoteTop - bottomReserve),
-            ) *
-            0.94;
+        final ambientTop = landscape ? 14.0 : 8.0;
+        final quoteTop = (constraints.maxHeight * 0.058).clamp(38.0, 68.0);
+        final bottomReserve = controlsBottom + (landscape ? 20 : 104);
+        final maxRingDimension = landscape
+            ? math.min(280.0, constraints.maxHeight - 48)
+            : math.min(
+                344.0,
+                math.max(216.0, constraints.maxHeight - quoteTop - bottomReserve),
+              ) * 0.94;
         final centerY = constraints.maxHeight / 2;
         final statusTop = math
             .min(
@@ -73,6 +73,68 @@ class TimerPage extends StatelessWidget {
             )
             .clamp(quoteTop + 76, constraints.maxHeight - controlsBottom - 58)
             .toDouble();
+
+        final ringWidget = Center(
+          child: GestureDetector(
+            onTap: () {
+              if (timer.phase != TimerPhase.running) onOpenStats();
+            },
+            child: _PipReturnScale(
+              active: expandFromPictureInPicture,
+              child: _TimerFace(
+                oledMode: oledMode,
+                child: TimerProgressRing(
+                  snapshot: timer,
+                  maxDimension: maxRingDimension,
+                  showInnerStatus: false,
+                  oledMode: oledMode,
+                ),
+              ),
+            ),
+          ),
+        );
+
+        final rightColumn = Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ChromeFade(
+              hidden: pureDisplay,
+              slideOffset: const Offset(0, -0.08),
+              child: _HitokotoLine(mode: timer.mode),
+            ),
+            const SizedBox(height: 20),
+            ChromeFade(
+              hidden: pureDisplay,
+              slideOffset: const Offset(0, 0.10),
+              scale: 0.98,
+              child: Center(
+                child: _PhasePill(
+                  mode: timer.mode,
+                  phase: timer.phase,
+                  maxWidth: math.min(320, constraints.maxWidth - 48),
+                ),
+              ),
+            ),
+            const Spacer(),
+            ChromeFade(
+              hidden: pureDisplay,
+              slideOffset: const Offset(0, 0.18),
+              scale: 0.96,
+              child: TimerActions(
+                controller: controller,
+                mode: timer.mode,
+                phase: timer.phase,
+                keepScreenOn: settings.keepScreenOnEnabled,
+                pictureInPictureEnabled: settings.pictureInPictureEnabled,
+                hapticsEnabled: settings.completionHapticsEnabled,
+                onOpenSettings: onOpenSettings,
+                onToggleKeepScreenOn: onToggleKeepScreenOn,
+                onTogglePictureInPicture: onTogglePictureInPicture,
+                onUiHaptic: onUiHaptic,
+              ),
+            ),
+          ],
+        );
 
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
@@ -88,77 +150,72 @@ class TimerPage extends StatelessWidget {
                   child: const _AmbientInfoLine(),
                 ),
               ),
-              Center(
-                child: GestureDetector(
-                  // ponytail: tap ring to open stats when not running
-                  onTap: () {
-                    if (timer.phase != TimerPhase.running) {
-                      onOpenStats();
-                    }
-                  },
-                  child: _PipReturnScale(
-                  active: expandFromPictureInPicture,
-                  child: _TimerFace(
-                    oledMode: oledMode,
-                    child: TimerProgressRing(
-                      snapshot: timer,
-                      maxDimension: maxRingDimension,
-                      showInnerStatus: false,
-                      oledMode: oledMode,
+              if (landscape)
+                Positioned(
+                  left: 24,
+                  right: 24,
+                  top: quoteTop + 24,
+                  bottom: controlsBottom,
+                  child: Row(
+                    children: [
+                      Expanded(child: Center(child: ringWidget)),
+                      const SizedBox(width: 24),
+                      SizedBox(width: math.min(280, constraints.maxWidth * 0.35), child: rightColumn),
+                    ],
+                  ),
+                )
+              else ...[
+                ringWidget,
+                Positioned(
+                  left: 24,
+                  right: 24,
+                  top: quoteTop,
+                  child: ChromeFade(
+                    hidden: pureDisplay,
+                    slideOffset: const Offset(0, -0.08),
+                    child: _HitokotoLine(mode: timer.mode),
+                  ),
+                ),
+                Positioned(
+                  left: 24,
+                  right: 24,
+                  top: statusTop,
+                  child: ChromeFade(
+                    hidden: pureDisplay,
+                    slideOffset: const Offset(0, 0.10),
+                    scale: 0.98,
+                    child: Center(
+                      child: _PhasePill(
+                        mode: timer.mode,
+                        phase: timer.phase,
+                        maxWidth: math.min(320, constraints.maxWidth - 48),
+                      ),
                     ),
                   ),
                 ),
-                ),
-              ),
-              Positioned(
-                left: 24,
-                right: 24,
-                top: quoteTop,
-                child: ChromeFade(
-                  hidden: pureDisplay,
-                  slideOffset: const Offset(0, -0.08),
-                  child: _HitokotoLine(mode: timer.mode),
-                ),
-              ),
-              Positioned(
-                left: 24,
-                right: 24,
-                top: statusTop,
-                child: ChromeFade(
-                  hidden: pureDisplay,
-                  slideOffset: const Offset(0, 0.10),
-                  scale: 0.98,
-                  child: Center(
-                    child: _PhasePill(
+                Positioned(
+                  left: 16,
+                  right: 16,
+                  bottom: controlsBottom,
+                  child: ChromeFade(
+                    hidden: pureDisplay,
+                    slideOffset: const Offset(0, 0.18),
+                    scale: 0.96,
+                    child: TimerActions(
+                      controller: controller,
                       mode: timer.mode,
                       phase: timer.phase,
-                      maxWidth: math.min(320, constraints.maxWidth - 48),
+                      keepScreenOn: settings.keepScreenOnEnabled,
+                      pictureInPictureEnabled: settings.pictureInPictureEnabled,
+                      hapticsEnabled: settings.completionHapticsEnabled,
+                      onOpenSettings: onOpenSettings,
+                      onToggleKeepScreenOn: onToggleKeepScreenOn,
+                      onTogglePictureInPicture: onTogglePictureInPicture,
+                      onUiHaptic: onUiHaptic,
                     ),
                   ),
                 ),
-              ),
-              Positioned(
-                left: 16,
-                right: 16,
-                bottom: controlsBottom,
-                child: ChromeFade(
-                  hidden: pureDisplay,
-                  slideOffset: const Offset(0, 0.18),
-                  scale: 0.96,
-                  child: TimerActions(
-                    controller: controller,
-                    mode: timer.mode,
-                    phase: timer.phase,
-                    keepScreenOn: settings.keepScreenOnEnabled,
-                    pictureInPictureEnabled: settings.pictureInPictureEnabled,
-                    hapticsEnabled: settings.completionHapticsEnabled,
-                    onOpenSettings: onOpenSettings,
-                    onToggleKeepScreenOn: onToggleKeepScreenOn,
-                    onTogglePictureInPicture: onTogglePictureInPicture,
-                    onUiHaptic: onUiHaptic,
-                  ),
-                ),
-              ),
+              ],
             ],
           ),
         );
@@ -198,7 +255,8 @@ class _AmbientInfoLineState extends State<_AmbientInfoLine> {
   }
 
   Future<void> _loadWeather() async {
-    final weather = await _weatherService.fetch();
+    final settings = AppScope.read(context).data.settings;
+    final weather = await _weatherService.fetch(city: settings.weatherCity);
     if (!mounted || weather == null) return;
     setState(() => _weather = weather);
   }

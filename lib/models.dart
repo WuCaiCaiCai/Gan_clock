@@ -96,6 +96,7 @@ class AppSettings {
     this.localBackupAutoIntervalMinutes = 60,
     this.localBackupKeepCount = 5,
     this.weatherEnabled = true,
+    this.weatherCity = '',
   });
 
   final int focusMinutes;
@@ -114,6 +115,7 @@ class AppSettings {
   final int localBackupAutoIntervalMinutes;
   final int localBackupKeepCount;
   final bool weatherEnabled;
+  final String weatherCity;
 
   AppSettings copyWith({
     int? focusMinutes,
@@ -132,6 +134,7 @@ class AppSettings {
     int? localBackupAutoIntervalMinutes,
     int? localBackupKeepCount,
     bool? weatherEnabled,
+    String? weatherCity,
   }) {
     return AppSettings(
       focusMinutes: focusMinutes ?? this.focusMinutes,
@@ -156,6 +159,7 @@ class AppSettings {
           localBackupAutoIntervalMinutes ?? this.localBackupAutoIntervalMinutes,
       localBackupKeepCount: localBackupKeepCount ?? this.localBackupKeepCount,
       weatherEnabled: weatherEnabled ?? this.weatherEnabled,
+      weatherCity: weatherCity ?? this.weatherCity,
     );
   }
 
@@ -177,6 +181,7 @@ class AppSettings {
       'localBackupAutoIntervalMinutes': localBackupAutoIntervalMinutes,
       'localBackupKeepCount': localBackupKeepCount,
       'weatherEnabled': weatherEnabled,
+      'weatherCity': weatherCity,
     };
   }
 
@@ -221,6 +226,7 @@ class AppSettings {
         5,
       ),
       weatherEnabled: value['weatherEnabled'] as bool? ?? true,
+      weatherCity: value['weatherCity'] as String? ?? '',
     );
   }
 }

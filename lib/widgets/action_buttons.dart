@@ -42,7 +42,7 @@ class TimerActions extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final compact = constraints.maxWidth < 360;
-        final iconSize = compact ? 38.0 : 42.0;
+        final iconSize = compact ? 42.0 : 48.0;
         final buttonPadding = EdgeInsets.symmetric(
           horizontal: compact ? 14 : 18,
           vertical: 0,
