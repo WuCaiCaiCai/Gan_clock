@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-enum TimerMode { focus, shortBreak, longBreak }
+enum TimerMode { focus, shortBreak, longBreak, countUp }
 
 enum TimerPhase { idle, running, paused }
 
@@ -50,6 +50,8 @@ extension TimerModeLabels on TimerMode {
         return '短休息';
       case TimerMode.longBreak:
         return '长休息';
+      case TimerMode.countUp:
+        return '正计时';
     }
   }
 
@@ -61,6 +63,8 @@ extension TimerModeLabels on TimerMode {
         return settings.shortBreakMinutes * 60;
       case TimerMode.longBreak:
         return settings.longBreakMinutes * 60;
+      case TimerMode.countUp:
+        return 0;
     }
   }
 }
@@ -89,7 +93,6 @@ class AppSettings {
     this.themeMode = AppThemeMode.system,
     this.keepScreenOnEnabled = false,
     this.pictureInPictureEnabled = true,
-    this.completionSoundEnabled = false,
     this.completionHapticsEnabled = true,
     this.localBackupDirectory = '',
     this.localBackupAutoEnabled = false,
@@ -97,6 +100,8 @@ class AppSettings {
     this.localBackupKeepCount = 5,
     this.weatherEnabled = true,
     this.weatherCity = '',
+    this.weatherLocationId = '',
+    this.weatherApiKey = '',
   });
 
   final int focusMinutes;
@@ -108,7 +113,6 @@ class AppSettings {
   final AppThemeMode themeMode;
   final bool keepScreenOnEnabled;
   final bool pictureInPictureEnabled;
-  final bool completionSoundEnabled;
   final bool completionHapticsEnabled;
   final String localBackupDirectory;
   final bool localBackupAutoEnabled;
@@ -116,6 +120,8 @@ class AppSettings {
   final int localBackupKeepCount;
   final bool weatherEnabled;
   final String weatherCity;
+  final String weatherLocationId;
+  final String weatherApiKey;
 
   AppSettings copyWith({
     int? focusMinutes,
@@ -127,7 +133,6 @@ class AppSettings {
     AppThemeMode? themeMode,
     bool? keepScreenOnEnabled,
     bool? pictureInPictureEnabled,
-    bool? completionSoundEnabled,
     bool? completionHapticsEnabled,
     String? localBackupDirectory,
     bool? localBackupAutoEnabled,
@@ -135,6 +140,8 @@ class AppSettings {
     int? localBackupKeepCount,
     bool? weatherEnabled,
     String? weatherCity,
+    String? weatherLocationId,
+    String? weatherApiKey,
   }) {
     return AppSettings(
       focusMinutes: focusMinutes ?? this.focusMinutes,
@@ -148,8 +155,6 @@ class AppSettings {
       keepScreenOnEnabled: keepScreenOnEnabled ?? this.keepScreenOnEnabled,
       pictureInPictureEnabled:
           pictureInPictureEnabled ?? this.pictureInPictureEnabled,
-      completionSoundEnabled:
-          completionSoundEnabled ?? this.completionSoundEnabled,
       completionHapticsEnabled:
           completionHapticsEnabled ?? this.completionHapticsEnabled,
       localBackupDirectory: localBackupDirectory ?? this.localBackupDirectory,
@@ -160,6 +165,8 @@ class AppSettings {
       localBackupKeepCount: localBackupKeepCount ?? this.localBackupKeepCount,
       weatherEnabled: weatherEnabled ?? this.weatherEnabled,
       weatherCity: weatherCity ?? this.weatherCity,
+      weatherLocationId: weatherLocationId ?? this.weatherLocationId,
+      weatherApiKey: weatherApiKey ?? this.weatherApiKey,
     );
   }
 
@@ -174,7 +181,6 @@ class AppSettings {
       'themeMode': themeMode.name,
       'keepScreenOnEnabled': keepScreenOnEnabled,
       'pictureInPictureEnabled': pictureInPictureEnabled,
-      'completionSoundEnabled': completionSoundEnabled,
       'completionHapticsEnabled': completionHapticsEnabled,
       'localBackupDirectory': localBackupDirectory,
       'localBackupAutoEnabled': localBackupAutoEnabled,
@@ -182,6 +188,8 @@ class AppSettings {
       'localBackupKeepCount': localBackupKeepCount,
       'weatherEnabled': weatherEnabled,
       'weatherCity': weatherCity,
+      'weatherLocationId': weatherLocationId,
+      'weatherApiKey': weatherApiKey,
     };
   }
 
@@ -208,7 +216,6 @@ class AppSettings {
       keepScreenOnEnabled: value['keepScreenOnEnabled'] as bool? ?? false,
       pictureInPictureEnabled:
           value['pictureInPictureEnabled'] as bool? ?? true,
-      completionSoundEnabled: value['completionSoundEnabled'] as bool? ?? false,
       completionHapticsEnabled:
           value['completionHapticsEnabled'] as bool? ?? true,
       localBackupDirectory: value['localBackupDirectory'] as String? ?? '',
@@ -227,6 +234,8 @@ class AppSettings {
       ),
       weatherEnabled: value['weatherEnabled'] as bool? ?? true,
       weatherCity: value['weatherCity'] as String? ?? '',
+      weatherLocationId: value['weatherLocationId'] as String? ?? '',
+      weatherApiKey: value['weatherApiKey'] as String? ?? '',
     );
   }
 }

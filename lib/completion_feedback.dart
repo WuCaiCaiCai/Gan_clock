@@ -52,9 +52,6 @@ class SystemCompletionFeedback implements CompletionFeedback {
         );
       }
     }
-    if (settings.completionSoundEnabled) {
-      futures.add(PlatformControls.playCompletionSound());
-    }
     await Future.wait(futures);
   }
 }

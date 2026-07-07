@@ -56,8 +56,8 @@ class TimerPage extends StatelessWidget {
       builder: (context, constraints) {
         final landscape = constraints.maxWidth > constraints.maxHeight;
         final controlsBottom = 28.0 + MediaQuery.paddingOf(context).bottom;
-        final ambientTop = landscape ? 14.0 : 8.0;
-        final quoteTop = (constraints.maxHeight * 0.058).clamp(38.0, 68.0);
+        final infoTop = (constraints.maxHeight * 0.20).clamp(28.0, 60.0);
+        final quoteTop = (constraints.maxHeight * 0.30).clamp(70.0, 120.0);
         final bottomReserve = controlsBottom + (landscape ? 20 : 104);
         final maxRingDimension = landscape
             ? math.min(280.0, constraints.maxHeight - 48)
@@ -65,19 +65,11 @@ class TimerPage extends StatelessWidget {
                 344.0,
                 math.max(216.0, constraints.maxHeight - quoteTop - bottomReserve),
               ) * 0.94;
-        final centerY = constraints.maxHeight / 2;
-        final statusTop = math
-            .min(
-              centerY + maxRingDimension / 2 + 14,
-              constraints.maxHeight - controlsBottom - 58,
-            )
-            .clamp(quoteTop + 76, constraints.maxHeight - controlsBottom - 58)
-            .toDouble();
 
         final ringWidget = Center(
           child: GestureDetector(
             onTap: () {
-              if (timer.phase != TimerPhase.running) onOpenStats();
+              if (timer.phase != TimerPhase.running) _showModeSheet(context);
             },
             child: _PipReturnScale(
               active: expandFromPictureInPicture,
@@ -101,19 +93,6 @@ class TimerPage extends StatelessWidget {
               hidden: pureDisplay,
               slideOffset: const Offset(0, -0.08),
               child: _HitokotoLine(mode: timer.mode),
-            ),
-            const SizedBox(height: 20),
-            ChromeFade(
-              hidden: pureDisplay,
-              slideOffset: const Offset(0, 0.10),
-              scale: 0.98,
-              child: Center(
-                child: _PhasePill(
-                  mode: timer.mode,
-                  phase: timer.phase,
-                  maxWidth: math.min(320, constraints.maxWidth - 48),
-                ),
-              ),
             ),
             const Spacer(),
             ChromeFade(
@@ -142,9 +121,9 @@ class TimerPage extends StatelessWidget {
           child: Stack(
             children: [
               Positioned(
-                left: 8,
-                right: 8,
-                top: ambientTop,
+                left: 16,
+                right: 16,
+                top: infoTop,
                 child: ChromeFade(
                   hidden: pureDisplay,
                   child: const _AmbientInfoLine(),
@@ -177,23 +156,6 @@ class TimerPage extends StatelessWidget {
                   ),
                 ),
                 Positioned(
-                  left: 24,
-                  right: 24,
-                  top: statusTop,
-                  child: ChromeFade(
-                    hidden: pureDisplay,
-                    slideOffset: const Offset(0, 0.10),
-                    scale: 0.98,
-                    child: Center(
-                      child: _PhasePill(
-                        mode: timer.mode,
-                        phase: timer.phase,
-                        maxWidth: math.min(320, constraints.maxWidth - 48),
-                      ),
-                    ),
-                  ),
-                ),
-                Positioned(
                   left: 16,
                   right: 16,
                   bottom: controlsBottom,
@@ -217,6 +179,78 @@ class TimerPage extends StatelessWidget {
                 ),
               ],
             ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _showModeSheet(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (sheetContext) {
+        final ctrl = controller;
+        final currentMode = ctrl.data.timer.mode;
+        final isPomodoro = currentMode == TimerMode.focus ||
+            currentMode == TimerMode.shortBreak ||
+            currentMode == TimerMode.longBreak;
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 36,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: Theme.of(sheetContext).colorScheme.outlineVariant,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text('选择计时模式',
+                  style: Theme.of(sheetContext).textTheme.titleMedium
+                      ?.copyWith(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 16),
+                ListTile(
+                  leading: Icon(modeIcon(TimerMode.focus),
+                    color: isPomodoro
+                        ? modePalette(TimerMode.focus).accent
+                        : null),
+                  title: const Text('番茄钟'),
+                  subtitle: const Text('倒计时专注，自动切换休息'),
+                  selected: isPomodoro,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  onTap: () {
+                    ctrl.selectMode(TimerMode.focus);
+                    Navigator.pop(sheetContext);
+                  },
+                ),
+                const SizedBox(height: 8),
+                ListTile(
+                  leading: Icon(modeIcon(TimerMode.countUp),
+                    color: currentMode == TimerMode.countUp
+                        ? modePalette(TimerMode.countUp).accent
+                        : null),
+                  title: const Text('正计时'),
+                  subtitle: const Text('不设上限，想专注多久就多久'),
+                  selected: currentMode == TimerMode.countUp,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  onTap: () {
+                    ctrl.selectMode(TimerMode.countUp);
+                    Navigator.pop(sheetContext);
+                  },
+                ),
+              ],
+            ),
           ),
         );
       },
@@ -256,7 +290,12 @@ class _AmbientInfoLineState extends State<_AmbientInfoLine> {
 
   Future<void> _loadWeather() async {
     final settings = AppScope.read(context).data.settings;
-    final weather = await _weatherService.fetch(city: settings.weatherCity);
+    final apiKey = settings.weatherApiKey;
+    if (apiKey.trim().isEmpty) return;
+    final weather = await _weatherService.fetch(
+      locationId: settings.weatherLocationId,
+      apiKey: apiKey,
+    );
     if (!mounted || weather == null) return;
     setState(() => _weather = weather);
   }
@@ -385,48 +424,6 @@ class _TimerFace extends StatelessWidget {
   }
 }
 
-class _PhasePill extends StatelessWidget {
-  const _PhasePill({
-    required this.mode,
-    required this.phase,
-    required this.maxWidth,
-  });
-
-  final TimerMode mode;
-  final TimerPhase phase;
-  final double maxWidth;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final palette = modePalette(mode);
-    return ConstrainedBox(
-      constraints: BoxConstraints(maxWidth: maxWidth),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 260),
-        curve: Curves.easeOutCubic,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        decoration: BoxDecoration(
-          color: scheme.surface.withAlpha(220),
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: palette.accent.withAlpha(90)),
-        ),
-        child: FittedBox(
-          fit: BoxFit.scaleDown,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(modeIcon(mode), size: 18, color: palette.accent),
-              const SizedBox(width: 8),
-              Text('${mode.label} · ${phaseLabel(phase)}'),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _HitokotoLine extends StatefulWidget {
   const _HitokotoLine({required this.mode});
 
@@ -450,6 +447,12 @@ class _HitokotoLine extends StatefulWidget {
       '走动一下，让身体接上节奏。',
       '把刚才完成的事放下片刻。',
       '休息之后，再回到清楚的开始。',
+    ],
+    TimerMode.countUp: [
+      '不设限，只关注投入的时间。',
+      '让时间自然流动，不被打断。',
+      '沉浸进去，多久都可以。',
+      '开始就是最好的计时方式。',
     ],
   };
 

@@ -67,6 +67,8 @@ IconData modeIcon(TimerMode mode) {
       return Icons.local_cafe_outlined;
     case TimerMode.longBreak:
       return Icons.chair_outlined;
+    case TimerMode.countUp:
+      return Icons.av_timer;
   }
 }
 
@@ -124,6 +126,12 @@ StagePalette modePalette(TimerMode mode) {
         accent: Color(0xFF3D79A8),
         lightBackground: Color(0xFFE8ECF2),
         darkBackground: Color(0xFF14191E),
+      );
+    case TimerMode.countUp:
+      return const StagePalette(
+        accent: Color(0xFF4A8C7B),
+        lightBackground: Color(0xFFEBF0EE),
+        darkBackground: Color(0xFF131917),
       );
   }
 }

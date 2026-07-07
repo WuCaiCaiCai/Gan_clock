@@ -1137,22 +1137,10 @@ class _StatsSheetOverlay extends StatelessWidget {
                               ?.copyWith(fontWeight: FontWeight.w600),
                         ),
                         const Spacer(),
-                        Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              tooltip: '关闭',
-                              icon: const Icon(Icons.close),
-                              onPressed: onClose,
-                            ),
-                            // ponytail: ring mask below X button
-                            CustomPaint(
-                              size: const Size(36, 36),
-                              painter: _StatsRingMask(
-                                color: scheme.outlineVariant.withAlpha(50),
-                              ),
-                            ),
-                          ],
+                        IconButton(
+                          tooltip: '关闭',
+                          icon: const Icon(Icons.close),
+                          onPressed: onClose,
                         ),
                       ],
                     ),
@@ -1176,24 +1164,3 @@ class _StatsSheetOverlay extends StatelessWidget {
   }
 }
 
-class _StatsRingMask extends CustomPainter {
-  const _StatsRingMask({required this.color});
-
-  final Color color;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    final radius = size.width / 2 - 9;
-    final paint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 18
-      ..strokeCap = StrokeCap.round
-      ..color = color;
-    canvas.drawCircle(center, radius, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant _StatsRingMask oldDelegate) =>
-      oldDelegate.color != color;
-}

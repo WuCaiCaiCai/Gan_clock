@@ -17,15 +17,20 @@ class FocusHeatmap extends StatefulWidget {
 class _FocusHeatmapState extends State<FocusHeatmap> {
   HeatmapScope _scope = HeatmapScope.month;
   DateTime? _selectedDate;
+  int _monthOffset = 0;
+  int _yearOffset = 0;
 
   @override
   Widget build(BuildContext context) {
     final now = widget.now ?? DateTime.now();
+    final effectiveDate = _scope == HeatmapScope.month
+        ? DateTime(now.year, now.month + _monthOffset)
+        : DateTime(now.year + _yearOffset);
     final selectedDate =
-        _selectedDate ?? DateTime(now.year, now.month, now.day);
+        _selectedDate ?? DateTime(effectiveDate.year, effectiveDate.month, effectiveDate.day);
     final cells = _scope == HeatmapScope.month
-        ? _monthCells(now, widget.focusSecondsByDay)
-        : _yearCells(now, widget.focusSecondsByDay);
+        ? _monthCells(effectiveDate, widget.focusSecondsByDay)
+        : _yearCells(effectiveDate, widget.focusSecondsByDay);
     final activeCells = cells.where((cell) => cell.inScope).toList();
     final maxSeconds = activeCells.fold<int>(
       0,
@@ -42,28 +47,35 @@ class _FocusHeatmapState extends State<FocusHeatmap> {
       0,
       (total, cell) => total + cell.seconds,
     );
+
+    final canGoBack = _scope == HeatmapScope.month
+        ? _hasDataBefore(effectiveDate, widget.focusSecondsByDay)
+        : _hasDataBeforeYear(effectiveDate, widget.focusSecondsByDay);
+    final canGoNext = !effectiveDate.isAfter(now);
+
+    final title = _scope == HeatmapScope.month ? '月份' : '年份';
+    final scopeLabel = _scopeLabel(effectiveDate, _scope);
+
     final heatmapBody = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _scope == HeatmapScope.month
-            ? _MonthHeatmap(
-                cells: cells,
-                selectedDate: selectedCell.date,
-                maxSeconds: maxSeconds,
-                onSelected: _selectDate,
-              )
-            : _YearHeatmap(
-                cells: cells,
-                selectedDate: selectedCell.date,
-                maxSeconds: maxSeconds,
-                onSelected: _selectDate,
-              ),
-        const SizedBox(height: 12),
-        _HeatmapLegend(maxSeconds: maxSeconds),
+        if (_scope == HeatmapScope.month)
+          _MonthHeatmap(
+            cells: cells,
+            selectedDate: selectedCell.date,
+            maxSeconds: maxSeconds,
+            onSelected: _selectDate,
+          )
+        else
+          _YearHeatmap(
+            cells: cells,
+            selectedDate: selectedCell.date,
+            maxSeconds: maxSeconds,
+            onSelected: _selectDate,
+          ),
       ],
     );
     final summary = _HeatmapSummary(
-      label: _scopeLabel(now, _scope),
       activeDays: activeDays,
       totalSeconds: totalSeconds,
     );
@@ -77,38 +89,38 @@ class _FocusHeatmapState extends State<FocusHeatmap> {
             children: [
               Row(
                 children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '专注热力图',
-                          style: Theme.of(context).textTheme.titleMedium,
+                  Text(
+                    title,
+                    style: Theme.of(context).textTheme.titleMedium
+                        ?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    scopeLabel,
+                    style: Theme.of(context).textTheme.labelMedium
+                        ?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
-                        const SizedBox(height: 2),
-                        Text(
-                          _scopeLabel(now, _scope),
-                          style: Theme.of(context).textTheme.labelMedium
-                              ?.copyWith(
-                                color: Theme.of(
-                                  context,
-                                ).colorScheme.onSurfaceVariant,
-                              ),
-                        ),
-                      ],
-                    ),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    icon: const Icon(Icons.chevron_left, size: 20),
+                    visualDensity: VisualDensity.compact,
+                    onPressed: canGoBack ? _navigateBack : null,
                   ),
                   SegmentedButton<HeatmapScope>(
                     showSelectedIcon: false,
+                    style: ButtonStyle(
+                      visualDensity: VisualDensity.compact,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
                     segments: const [
                       ButtonSegment(
                         value: HeatmapScope.month,
-                        icon: Icon(Icons.calendar_view_month),
                         label: Text('月'),
                       ),
                       ButtonSegment(
                         value: HeatmapScope.year,
-                        icon: Icon(Icons.calendar_today),
                         label: Text('年'),
                       ),
                     ],
@@ -118,6 +130,11 @@ class _FocusHeatmapState extends State<FocusHeatmap> {
                         _scope = values.single;
                       });
                     },
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.chevron_right, size: 20),
+                    visualDensity: VisualDensity.compact,
+                    onPressed: canGoNext ? _navigateNext : null,
                   ),
                 ],
               ),
@@ -168,6 +185,38 @@ class _FocusHeatmapState extends State<FocusHeatmap> {
     );
   }
 
+  void _navigateBack() {
+    setState(() {
+      if (_scope == HeatmapScope.month) {
+        _monthOffset--;
+      } else {
+        _yearOffset--;
+      }
+      _selectedDate = null;
+    });
+  }
+
+  void _navigateNext() {
+    setState(() {
+      if (_scope == HeatmapScope.month) {
+        _monthOffset++;
+      } else {
+        _yearOffset++;
+      }
+      _selectedDate = null;
+    });
+  }
+
+  bool _hasDataBefore(DateTime date, Map<String, int> values) {
+    final key = dateKey(DateTime(date.year, date.month - 1));
+    return values.entries.any((e) => e.key.compareTo(key) < 0 && e.value > 0);
+  }
+
+  bool _hasDataBeforeYear(DateTime date, Map<String, int> values) {
+    final key = '${date.year - 1}-12-31';
+    return values.entries.any((e) => e.key.compareTo(key) <= 0 && e.value > 0);
+  }
+
   void _selectDate(DateTime date) {
     setState(() {
       _selectedDate = DateTime(date.year, date.month, date.day);
@@ -177,12 +226,10 @@ class _FocusHeatmapState extends State<FocusHeatmap> {
 
 class _HeatmapSummary extends StatelessWidget {
   const _HeatmapSummary({
-    required this.label,
     required this.activeDays,
     required this.totalSeconds,
   });
 
-  final String label;
   final int activeDays;
   final int totalSeconds;
 
@@ -194,12 +241,12 @@ class _HeatmapSummary extends StatelessWidget {
         final metrics = [
           _HeatmapMetric(
             icon: Icons.date_range_outlined,
-            label: label,
+            label: '专注天数',
             value: '$activeDays 天',
           ),
           _HeatmapMetric(
             icon: Icons.timer_outlined,
-            label: '累计',
+            label: '专注时长',
             value: _formatDuration(totalSeconds),
           ),
         ];
@@ -540,51 +587,6 @@ class _SelectedDaySummary extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-class _HeatmapLegend extends StatelessWidget {
-  const _HeatmapLegend({required this.maxSeconds});
-
-  final int maxSeconds;
-
-  @override
-  Widget build(BuildContext context) {
-    final levels = [
-      0,
-      maxSeconds <= 0 ? 0 : (maxSeconds * 0.25).round(),
-      maxSeconds <= 0 ? 0 : (maxSeconds * 0.5).round(),
-      maxSeconds <= 0 ? 0 : (maxSeconds * 0.75).round(),
-      maxSeconds <= 0 ? 0 : maxSeconds,
-    ];
-    return Row(
-      children: [
-        Text(
-          '少',
-          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
-        ),
-        const SizedBox(width: 8),
-        for (final seconds in levels) ...[
-          DecoratedBox(
-            decoration: BoxDecoration(
-              color: _heatColor(context, seconds, maxSeconds),
-              borderRadius: BorderRadius.circular(3),
-            ),
-            child: const SizedBox.square(dimension: 12),
-          ),
-          const SizedBox(width: 4),
-        ],
-        const SizedBox(width: 4),
-        Text(
-          '多',
-          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
-        ),
-      ],
     );
   }
 }

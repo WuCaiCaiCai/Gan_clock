@@ -7,7 +7,9 @@ import '../app_controller.dart';
 import '../app_scope.dart';
 import '../models.dart';
 import '../platform_controls.dart';
-import '../utils.dart';
+import '../weather_service.dart';
+import '../widgets/duration_picker.dart';
+import '../widgets/int_wheel_picker.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({
@@ -28,7 +30,7 @@ class SettingsPage extends StatefulWidget {
 class _SettingsPageState extends State<SettingsPage> {
   int _subPage = 0;
 
-  static const _pages = ['', '计时与待机', '切换提醒', '外观', '备份', '天气'];
+  static const _pages = ['', '计时与待机', '备份', '天气'];
 
   @override
   void dispose() {
@@ -108,24 +110,47 @@ class _SettingsPageState extends State<SettingsPage> {
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => _openSubPage(1),
                 ),
-                ListTile(
-                  leading: Icon(themeModeIcon(settings.themeMode)),
-                  title: const Text('外观'),
-                  subtitle: Text('主题 · ${settings.themeMode.label}'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => _openSubPage(3),
+                SwitchListTile(
+                  contentPadding: const EdgeInsets.fromLTRB(16, 4, 12, 4),
+                  secondary: const Icon(Icons.vibration),
+                  title: const Text('切换震动'),
+                  value: settings.completionHapticsEnabled,
+                  onChanged: (value) {
+                    controller.updateSettings(
+                      settings.copyWith(completionHapticsEnabled: value),
+                    );
+                  },
                 ),
-                ListTile(
-                  leading: const Icon(Icons.vibration),
-                  title: const Text('切换提醒'),
-                  subtitle: Text(
-                    [
-                      if (settings.completionHapticsEnabled) '震动' else '无震动',
-                      if (settings.completionSoundEnabled) '音效' else '无音效',
-                    ].join(' · '),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                  child: Row(
+                    children: [
+                      Icon(Icons.palette_outlined, size: 20,
+                        color: Theme.of(context).colorScheme.primary),
+                      const SizedBox(width: 8),
+                      Text('主题', style: Theme.of(context).textTheme.bodyLarge),
+                      const Spacer(),
+                      SegmentedButton<AppThemeMode>(
+                        showSelectedIcon: false,
+                        style: ButtonStyle(
+                          visualDensity: VisualDensity.compact,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        segments: AppThemeMode.values
+                            .map((mode) => ButtonSegment<AppThemeMode>(
+                                  value: mode,
+                                  label: Text(mode.label, style: const TextStyle(fontSize: 12)),
+                                ))
+                            .toList(),
+                        selected: {settings.themeMode},
+                        onSelectionChanged: (values) {
+                          controller.updateSettings(
+                            settings.copyWith(themeMode: values.single),
+                          );
+                        },
+                      ),
+                    ],
                   ),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => _openSubPage(2),
                 ),
               ],
             ),
@@ -139,7 +164,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   title: const Text('备份'),
                   subtitle: const Text('本地备份与恢复'),
                   trailing: const Icon(Icons.chevron_right),
-                  onTap: () => _openSubPage(4),
+                  onTap: () => _openSubPage(2),
                 ),
               ],
             ),
@@ -153,7 +178,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   title: const Text('天气显示'),
                   subtitle: Text(settings.weatherEnabled ? '已开启' : '已关闭'),
                   trailing: const Icon(Icons.chevron_right),
-                  onTap: () => _openSubPage(5),
+                  onTap: () => _openSubPage(3),
                 ),
               ],
             ),
@@ -203,12 +228,8 @@ class _SettingsPageState extends State<SettingsPage> {
       case 1:
         return const _TimerSettingsContent();
       case 2:
-        return const _FeedbackSettingsContent();
-      case 3:
-        return const _AppearanceSettingsContent();
-      case 4:
         return const _BackupContent();
-      case 5:
+      case 3:
         return const _WeatherSettingsContent();
       default:
         return const SizedBox.shrink();
@@ -596,214 +617,85 @@ class _TimerSettingsContent extends StatelessWidget {
 
     return _SettingsSubPageScaffold(
       children: [
-        _SettingsSection(
-          icon: Icons.tune,
-          title: '阶段时长',
-          children: [
-            NumberStepper(
-              icon: Icons.psychology_alt_outlined,
-              label: '专注时长',
-              value: settings.focusMinutes,
-              min: 1,
-              max: 240,
-              suffix: '分钟',
-              onChanged: (value) {
-                controller.updateSettings(
-                  settings.copyWith(focusMinutes: value),
-                );
-              },
-            ),
-            NumberStepper(
-              icon: Icons.coffee_outlined,
-              label: '短休息',
-              value: settings.shortBreakMinutes,
-              min: 1,
-              max: 120,
-              suffix: '分钟',
-              onChanged: (value) {
-                controller.updateSettings(
-                  settings.copyWith(shortBreakMinutes: value),
-                );
-              },
-            ),
-            NumberStepper(
-              icon: Icons.weekend_outlined,
-              label: '长休息',
-              value: settings.longBreakMinutes,
-              min: 1,
-              max: 240,
-              suffix: '分钟',
-              onChanged: (value) {
-                controller.updateSettings(
-                  settings.copyWith(longBreakMinutes: value),
-                );
-              },
-            ),
-          ],
+        DurationPicker(
+          icon: Icons.psychology_alt_outlined,
+          label: '专注时长',
+          valueMinutes: settings.focusMinutes,
+          minMinutes: 5,
+          maxMinutes: 240,
+          onChanged: (value) {
+            controller.updateSettings(
+              settings.copyWith(focusMinutes: value),
+            );
+          },
         ),
-        _SettingsSection(
+        DurationPicker(
+          icon: Icons.coffee_outlined,
+          label: '短休息',
+          valueMinutes: settings.shortBreakMinutes,
+          minMinutes: 5,
+          maxMinutes: 120,
+          onChanged: (value) {
+            controller.updateSettings(
+              settings.copyWith(shortBreakMinutes: value),
+            );
+          },
+        ),
+        DurationPicker(
+          icon: Icons.weekend_outlined,
+          label: '长休息',
+          valueMinutes: settings.longBreakMinutes,
+          minMinutes: 5,
+          maxMinutes: 240,
+          onChanged: (value) {
+            controller.updateSettings(
+              settings.copyWith(longBreakMinutes: value),
+            );
+          },
+        ),
+        IntWheelPicker(
           icon: Icons.repeat,
-          title: '循环',
-          children: [
-            NumberStepper(
-              icon: Icons.repeat,
-              label: '长休间隔',
-              value: settings.roundsBeforeLongBreak,
-              min: 1,
-              max: 12,
-              suffix: '轮',
-              onChanged: (value) {
-                controller.updateSettings(
-                  settings.copyWith(roundsBeforeLongBreak: value),
-                );
-              },
-            ),
-            NumberStepper(
-              icon: Icons.autorenew,
-              label: '本轮循环次数',
-              value: settings.focusCyclesPerRun,
-              min: 1,
-              max: 48,
-              suffix: '次',
-              onChanged: (value) {
-                controller.updateSettings(
-                  settings.copyWith(focusCyclesPerRun: value),
-                );
-              },
-            ),
-          ],
+          label: '长休间隔',
+          value: settings.roundsBeforeLongBreak,
+          min: 1,
+          max: 12,
+          suffix: '轮',
+          onChanged: (value) {
+            controller.updateSettings(
+              settings.copyWith(roundsBeforeLongBreak: value),
+            );
+          },
         ),
-        _SettingsSection(
+        IntWheelPicker(
+          icon: Icons.autorenew,
+          label: '本轮循环次数',
+          value: settings.focusCyclesPerRun,
+          min: 1,
+          max: 48,
+          suffix: '次',
+          onChanged: (value) {
+            controller.updateSettings(
+              settings.copyWith(focusCyclesPerRun: value),
+            );
+          },
+        ),
+        const _SettingsNote(
+          icon: Icons.dark_mode_outlined,
+          text: '计时页长时间无操作后先进入纯净模式；再经过同样的延时，背景转为 OLED 黑底防烧显示。',
+        ),
+        IntWheelPicker(
           icon: Icons.visibility_off_outlined,
-          title: '待机显示',
-          children: [
-            const _SettingsNote(
-              icon: Icons.dark_mode_outlined,
-              text: '计时页长时间无操作后先进入纯净模式；再经过同样的延时，背景转为 OLED 黑底防烧显示。',
-            ),
-            NumberStepper(
-              icon: Icons.visibility_off_outlined,
-              label: '待机延时',
-              value: settings.idleFocusSeconds,
-              min: 5,
-              max: 600,
-              suffix: '秒',
-              onChanged: (value) {
-                controller.updateSettings(
-                  settings.copyWith(idleFocusSeconds: value),
-                );
-              },
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-}
-
-class _FeedbackSettingsContent extends StatelessWidget {
-  const _FeedbackSettingsContent();
-
-  @override
-  Widget build(BuildContext context) {
-    final controller = AppScope.read(context);
-    final settings = controller.data.settings;
-
-    return _SettingsSubPageScaffold(
-      children: [
-        Card(
-          child: Column(
-            children: [
-              SwitchListTile(
-                contentPadding: const EdgeInsets.fromLTRB(16, 4, 12, 4),
-                secondary: const Icon(Icons.vibration),
-                title: const Text('切换震动'),
-                subtitle: const Text('控制底部按钮触感与阶段切换振动提醒'),
-                value: settings.completionHapticsEnabled,
-                onChanged: (value) {
-                  controller.updateSettings(
-                    settings.copyWith(completionHapticsEnabled: value),
-                  );
-                },
-              ),
-              const Divider(height: 1, indent: 56),
-              SwitchListTile(
-                contentPadding: const EdgeInsets.fromLTRB(16, 4, 12, 4),
-                secondary: const Icon(Icons.notifications_active_outlined),
-                title: const Text('切换音效'),
-                subtitle: const Text('默认关闭，避免打扰；需要时可手动开启'),
-                value: settings.completionSoundEnabled,
-                onChanged: (value) {
-                  controller.updateSettings(
-                    settings.copyWith(completionSoundEnabled: value),
-                  );
-                },
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _AppearanceSettingsContent extends StatelessWidget {
-  const _AppearanceSettingsContent();
-
-  @override
-  Widget build(BuildContext context) {
-    final controller = AppScope.read(context);
-    final settings = controller.data.settings;
-
-    return _SettingsSubPageScaffold(
-      children: [
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(
-                      Icons.palette_outlined,
-                      size: 20,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                    const SizedBox(width: 10),
-                    Text(
-                      '主题',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  child: SegmentedButton<AppThemeMode>(
-                    showSelectedIcon: false,
-                    segments: AppThemeMode.values
-                        .map(
-                          (mode) => ButtonSegment<AppThemeMode>(
-                            value: mode,
-                            icon: Icon(themeModeIcon(mode)),
-                            label: Text(mode.label),
-                          ),
-                        )
-                        .toList(),
-                    selected: {settings.themeMode},
-                    onSelectionChanged: (values) {
-                      controller.updateSettings(
-                        settings.copyWith(themeMode: values.single),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
+          label: '待机延时',
+          value: settings.idleFocusSeconds,
+          min: 5,
+          max: 600,
+          step: 5,
+          suffix: '秒',
+          onChanged: (value) {
+            controller.updateSettings(
+              settings.copyWith(idleFocusSeconds: value),
+            );
+          },
         ),
       ],
     );
@@ -984,20 +876,81 @@ class _WeatherSettingsContent extends StatefulWidget {
 }
 
 class _WeatherSettingsContentState extends State<_WeatherSettingsContent> {
+  static const _weatherService = WeatherService();
+
   late final TextEditingController _cityController;
+  late final TextEditingController _apiKeyController;
+  Timer? _debounce;
+  List<CityResult> _suggestions = [];
+  bool _loading = false;
 
   @override
   void initState() {
     super.initState();
-    _cityController = TextEditingController(
-      text: AppScope.read(context).data.settings.weatherCity,
-    );
+    final settings = AppScope.read(context).data.settings;
+    _cityController = TextEditingController(text: settings.weatherCity);
+    _apiKeyController = TextEditingController(text: settings.weatherApiKey);
+    _cityController.addListener(_onTextChanged);
   }
 
   @override
   void dispose() {
-    _cityController.dispose();
+    _debounce?.cancel();
+    _cityController
+      ..removeListener(_onTextChanged)
+      ..dispose();
+    _apiKeyController.dispose();
     super.dispose();
+  }
+
+  void _onTextChanged() {
+    final text = _cityController.text.trim();
+    _debounce?.cancel();
+    if (text.length < 2) {
+      setState(() => _suggestions = []);
+      return;
+    }
+    _debounce = Timer(const Duration(milliseconds: 300), () async {
+      setState(() => _loading = true);
+      final settings = AppScope.read(context).data.settings;
+      final results = await _weatherService.search(text, apiKey: settings.weatherApiKey);
+      if (!mounted) return;
+      setState(() {
+        _suggestions = results;
+        _loading = false;
+      });
+    });
+  }
+
+  void _selectCity(CityResult city) {
+    _cityController.text = city.fullName;
+    setState(() => _suggestions = []);
+    final controller = AppScope.read(context);
+    controller.updateSettings(
+      controller.data.settings.copyWith(
+        weatherCity: city.fullName,
+        weatherLocationId: city.id,
+      ),
+    );
+  }
+
+  void _clearCity() {
+    _cityController.clear();
+    setState(() => _suggestions = []);
+    final controller = AppScope.read(context);
+    controller.updateSettings(
+      controller.data.settings.copyWith(
+        weatherCity: '',
+        weatherLocationId: '',
+      ),
+    );
+  }
+
+  void _saveApiKey() {
+    final key = _apiKeyController.text.trim();
+    AppScope.read(context).updateSettings(
+      AppScope.read(context).data.settings.copyWith(weatherApiKey: key),
+    );
   }
 
   @override
@@ -1031,26 +984,74 @@ class _WeatherSettingsContentState extends State<_WeatherSettingsContent> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                Text('和风天气 API Key',
+                  style: Theme.of(context).textTheme.titleSmall
+                      ?.copyWith(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 4),
+                Text('在 dev.qweather.com 免费注册获取',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  )),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _apiKeyController,
+                  decoration: const InputDecoration(
+                    hintText: '输入 API Key',
+                    border: OutlineInputBorder(),
+                  ),
+                  obscureText: true,
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (_) => _saveApiKey(),
+                ),
+              ],
+            ),
+          ),
+        ),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
                 Text('固定城市',
                   style: Theme.of(context).textTheme.titleSmall
                       ?.copyWith(fontWeight: FontWeight.w600)),
                 const SizedBox(height: 8),
                 TextField(
                   controller: _cityController,
-                  decoration: const InputDecoration(
-                    hintText: '输入城市名，如 长安区',
-                    prefixIcon: Icon(Icons.search),
-                    border: OutlineInputBorder(),
+                  decoration: InputDecoration(
+                    hintText: '输入城市名搜索',
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: _cityController.text.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear, size: 18),
+                            onPressed: _clearCity,
+                          )
+                        : _loading
+                            ? const Padding(
+                                padding: EdgeInsets.all(14),
+                                child: SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                ),
+                              )
+                            : null,
+                    border: const OutlineInputBorder(),
                   ),
                   textInputAction: TextInputAction.done,
-                  onSubmitted: (_) => _saveCity(),
                 ),
-                const SizedBox(height: 8),
-                FilledButton.tonalIcon(
-                  onPressed: _saveCity,
-                  icon: const Icon(Icons.check, size: 18),
-                  label: const Text('搜索并固定'),
-                ),
+                if (_suggestions.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  ..._suggestions.map((city) => ListTile(
+                    dense: true,
+                    leading: const Icon(Icons.location_on_outlined, size: 18),
+                    title: Text(city.fullName, style: const TextStyle(fontSize: 14)),
+                    onTap: () => _selectCity(city),
+                  )),
+                ],
               ],
             ),
           ),
@@ -1091,17 +1092,5 @@ class _WeatherSettingsContentState extends State<_WeatherSettingsContent> {
         ),
       ],
     );
-  }
-
-  void _saveCity() {
-    final city = _cityController.text.trim();
-    AppScope.read(context).updateSettings(
-      AppScope.read(context).data.settings.copyWith(weatherCity: city),
-    );
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(
-        content: Text(city.isEmpty ? '已清除固定城市，将自动定位' : '已固定到 $city'),
-      ));
   }
 }

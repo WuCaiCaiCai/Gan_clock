@@ -93,8 +93,11 @@ class _TimerProgressRingState extends State<TimerProgressRing>
 
   @override
   Widget build(BuildContext context) {
-    final total = math.max(1, widget.snapshot.totalSeconds);
-    final elapsed = (total - widget.snapshot.remainingSeconds).clamp(0, total);
+    final countUp = widget.snapshot.mode == TimerMode.countUp;
+    final total = countUp ? 1 : math.max(1, widget.snapshot.totalSeconds);
+    final elapsed = countUp
+        ? 1
+        : (total - widget.snapshot.remainingSeconds).clamp(0, total);
     final progress = elapsed / total;
     final theme = Theme.of(context);
     final textTheme = theme.textTheme;
@@ -187,7 +190,11 @@ class _TimerProgressRingState extends State<TimerProgressRing>
                               FittedBox(
                                 fit: BoxFit.scaleDown,
                                 child: Text(
-                                  formatClock(widget.snapshot.remainingSeconds),
+                                  widget.snapshot.phase == TimerPhase.idle
+                                      ? widget.snapshot.mode == TimerMode.focus
+                                          ? '番茄钟'
+                                          : '正计时'
+                                      : formatClock(widget.snapshot.remainingSeconds),
                                   textAlign: TextAlign.center,
                                   softWrap: false,
                                   style: textTheme.displayMedium?.copyWith(
@@ -204,21 +211,6 @@ class _TimerProgressRingState extends State<TimerProgressRing>
                                   ),
                                 ),
                               ),
-                              if (!widget.compact &&
-                                  widget.showInnerStatus) ...[
-                                const SizedBox(height: 8),
-                                AnimatedSwitcher(
-                                  duration: const Duration(milliseconds: 180),
-                                  child: Text(
-                                    phaseLabel(widget.snapshot.phase),
-                                    key: ValueKey(widget.snapshot.phase),
-                                    style: textTheme.titleSmall?.copyWith(
-                                      color: scheme.onSurfaceVariant,
-                                      letterSpacing: 0,
-                                    ),
-                                  ),
-                                ),
-                              ],
                             ],
                           ),
                         ),

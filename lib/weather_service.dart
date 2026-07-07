@@ -2,6 +2,27 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+class CityResult {
+  const CityResult({
+    required this.id,
+    required this.name,
+    required this.adm2,
+    required this.adm1,
+  });
+
+  final String id;
+  final String name;
+  final String adm2;
+  final String adm1;
+
+  String get fullName {
+    final parts = <String>[];
+    if (adm2.isNotEmpty && adm2 != name) parts.add(adm2);
+    parts.add(name);
+    return parts.join(' · ');
+  }
+}
+
 class WeatherSnapshot {
   const WeatherSnapshot({
     required this.place,
@@ -23,153 +44,127 @@ class WeatherService {
   const WeatherService();
 
   static WeatherSnapshot? _cached;
+  static String? _cachedLocationId;
   static Future<WeatherSnapshot?>? _pending;
 
-  Future<WeatherSnapshot?> fetch({String? city}) {
-    final effectiveCity = city?.trim();
-    if (effectiveCity != null && effectiveCity.isNotEmpty) {
-      // ponytail: manual city overrides IP geolocation, bypass cache
-      _pending = _fetchForCity(effectiveCity);
-      return _pending!;
+  String? _resolveKey(String? apiKey) {
+    final key = (apiKey ?? '').trim();
+    return key.isNotEmpty ? key : null;
+  }
+
+  Future<List<CityResult>> search(String query, {String? apiKey}) async {
+    final key = _resolveKey(apiKey);
+    if (key == null || query.trim().length < 2) return [];
+    try {
+      final uri = Uri.https('geoapi.qweather.com', '/v2/city/lookup', {
+        'location': query.trim(),
+        'key': key,
+        'number': '6',
+      });
+      final response = await _getJson(uri);
+      final location = response?['location'];
+      if (location is! List) return [];
+      final results = <CityResult>[];
+      for (final item in location) {
+        if (item is! Map<String, Object?>) continue;
+        final id = item['id'] as String? ?? '';
+        final name = item['name'] as String? ?? '';
+        final adm2 = item['adm2'] as String? ?? '';
+        final adm1 = item['adm1'] as String? ?? '';
+        if (id.isEmpty || name.isEmpty) continue;
+        results.add(CityResult(id: id, name: name, adm2: adm2, adm1: adm1));
+      }
+      return results;
+    } on Object {
+      return [];
     }
-    final cached = _cached;
-    if (cached != null) {
-      return Future.value(cached);
+  }
+
+  Future<WeatherSnapshot?> fetch({String? locationId, String? apiKey}) async {
+    final key = _resolveKey(apiKey);
+    if (key == null) return null;
+    final effectiveId = locationId?.trim();
+    if (effectiveId != null && effectiveId.isNotEmpty) {
+      if (effectiveId == _cachedLocationId && _cached != null) {
+        return _cached;
+      }
+      _cachedLocationId = effectiveId;
+      _pending = _fetchWeather(effectiveId, key).then((value) {
+        _cached = value;
+        _pending = null;
+        return value;
+      });
+      return _pending;
     }
-    return _pending ??= _fetchFresh().then((value) {
+    if (_cached != null) {
+      return _cached;
+    }
+    return _pending ??= _fetchAutoLocation(key).then((value) {
       _cached = value;
       _pending = null;
       return value;
     });
   }
 
-  Future<WeatherSnapshot?> _fetchForCity(String city) async {
-    final coords = await _geocode(city);
-    if (coords == null) return null;
-    final weather = await _fetchWeather(coords.latitude, coords.longitude);
-    if (weather == null) return null;
-    final result = WeatherSnapshot(
-      place: city,
-      temperatureC: weather.temperatureC,
-      condition: weather.condition,
-    );
-    _cached = result;
-    _pending = null;
-    return result;
+  Future<WeatherSnapshot?> _fetchAutoLocation(String key) async {
+    final locationId = await _autoLocationId(key);
+    if (locationId == null) return null;
+    _cachedLocationId = locationId;
+    return _fetchWeather(locationId, key);
   }
 
-  Future<_WeatherLocation?> _geocode(String city) async {
-    final client = HttpClient();
+  Future<String?> _autoLocationId(String key) async {
     try {
-      final uri = Uri.https('nominatim.openstreetmap.org', '/search', {
-        'q': city,
-        'format': 'json',
-        'limit': '1',
-        'accept-language': 'zh',
-      });
-      final request = await client.getUrl(uri).timeout(const Duration(seconds: 4));
-      request.headers.set(HttpHeaders.acceptHeader, 'application/json');
-      final httpResponse = await request.close().timeout(const Duration(seconds: 4));
-      final raw = await httpResponse.transform(utf8.decoder).join();
-      final decoded = jsonDecode(raw);
-      if (decoded is! List || decoded.isEmpty) return null;
-      final place = decoded[0];
-      if (place is! Map<String, Object?>) return null;
-      final lat = _doubleOrNull(place['lat']);
-      final lon = _doubleOrNull(place['lon']);
-      if (lat == null || lon == null) return null;
-      return _WeatherLocation(latitude: lat, longitude: lon, city: city);
-    } on Object {
-      return null;
-    } finally {
-      client.close(force: true);
-    }
-  }
-
-  Future<WeatherSnapshot?> _fetchFresh() async {
-    final location = await _fetchLocation();
-    if (location == null) {
-      return null;
-    }
-    final district = await _reverseGeocode(location.latitude, location.longitude);
-    final place = district ?? location.city;
-    final weather = await _fetchWeather(location.latitude, location.longitude);
-    if (weather == null) return null;
-    return WeatherSnapshot(
-      place: place,
-      temperatureC: weather.temperatureC,
-      condition: weather.condition,
-    );
-  }
-
-  Future<_WeatherLocation?> _fetchLocation() async {
-    // ponytail: two free IP geolocation services for reliability
-    var response = await _getJson(Uri.parse('https://ipapi.co/json/'));
-    response ??= await _getJson(Uri.parse('http://ip-api.com/json/?fields=status,lat,lon,city'));
-    if (response == null) {
-      return null;
-    }
-    final latitude = _doubleOrNull(response['latitude'] ?? response['lat']);
-    final longitude = _doubleOrNull(response['longitude'] ?? response['lon']);
-    if (latitude == null || longitude == null) {
-      return null;
-    }
-    final city = (response['city'] as String?) ?? '';
-    final region = (response['region'] as String?) ?? (response['regionName'] as String?) ?? '';
-    // Build best available place name from API data
-    final apiPlace = region.isNotEmpty && region != city ? '$region$city' : city;
-    return _WeatherLocation(
-      latitude: latitude,
-      longitude: longitude,
-      city: apiPlace,
-    );
-  }
-
-  // ponytail: Nominatim reverse geocode for district-level name
-  Future<String?> _reverseGeocode(double lat, double lon) async {
-    try {
-      final uri = Uri.https('nominatim.openstreetmap.org', '/reverse', {
-        'lat': lat.toStringAsFixed(6),
-        'lon': lon.toStringAsFixed(6),
-        'format': 'json',
-        'zoom': '14',
-        'accept-language': 'zh',
+      final uri = Uri.https('geoapi.qweather.com', '/v2/city/lookup', {
+        'location': 'auto_ip',
+        'key': key,
+        'number': '1',
       });
       final response = await _getJson(uri);
-      final address = response?['address'];
-      if (address is! Map<String, Object?>) return null;
-      // Prefer district/county/suburb level for Chinese addresses
-      return (address['city_district'] as String?) ??
-          (address['county'] as String?) ??
-          (address['suburb'] as String?) ??
-          (address['city'] as String?);
+      final location = response?['location'];
+      if (location is! List || location.isEmpty) return null;
+      final first = location[0];
+      if (first is! Map<String, Object?>) return null;
+      final id = first['id'] as String?;
+      if (id == null || id.isEmpty) return null;
+      final name = first['name'] as String? ?? '';
+      final adm2 = first['adm2'] as String? ?? '';
+      final parts = <String>[];
+      if (adm2.isNotEmpty && adm2 != name) parts.add(adm2);
+      parts.add(name);
+      _cached = WeatherSnapshot(
+        place: parts.join('·'),
+        temperatureC: 0,
+        condition: '--',
+      );
+      return id;
     } on Object {
       return null;
     }
   }
 
-  Future<WeatherSnapshot?> _fetchWeather(double latitude, double longitude) async {
-    final uri = Uri.https('api.open-meteo.com', '/v1/forecast', {
-      'latitude': latitude.toStringAsFixed(4),
-      'longitude': longitude.toStringAsFixed(4),
-      'current': 'temperature_2m,weather_code',
-      'timezone': 'auto',
-    });
-    final response = await _getJson(uri);
-    final current = response?['current'];
-    if (current is! Map<String, Object?>) {
+  Future<WeatherSnapshot?> _fetchWeather(String locationId, String key) async {
+    try {
+      final uri = Uri.https('devapi.qweather.com', '/v7/weather/now', {
+        'location': locationId,
+        'key': key,
+      });
+      final response = await _getJson(uri);
+      final now = response?['now'];
+      if (now is! Map<String, Object?>) return null;
+      final tempStr = now['temp'] as String?;
+      final text = now['text'] as String? ?? '';
+      if (tempStr == null) return null;
+      final temperatureC = int.tryParse(tempStr) ?? 0;
+      final place = _cached?.place ?? '';
+      return WeatherSnapshot(
+        place: place,
+        temperatureC: temperatureC,
+        condition: text,
+      );
+    } on Object {
       return null;
     }
-    final temperature = _doubleOrNull(current['temperature_2m']);
-    final code = _intOrNull(current['weather_code']);
-    if (temperature == null || code == null) {
-      return null;
-    }
-    return WeatherSnapshot(
-      place: '',
-      temperatureC: temperature.round(),
-      condition: _weatherLabel(code),
-    );
   }
 
   Future<Map<String, Object?>?> _getJson(Uri uri) async {
@@ -177,10 +172,10 @@ class WeatherService {
     try {
       final request = await client
           .getUrl(uri)
-          .timeout(const Duration(seconds: 4));
+          .timeout(const Duration(seconds: 5));
       request.headers.set(HttpHeaders.acceptHeader, 'application/json');
       final response = await request.close().timeout(
-        const Duration(seconds: 4),
+        const Duration(seconds: 5),
       );
       if (response.statusCode < 200 || response.statusCode >= 300) {
         return null;
@@ -194,48 +189,4 @@ class WeatherService {
       client.close(force: true);
     }
   }
-}
-
-class _WeatherLocation {
-  const _WeatherLocation({
-    required this.latitude,
-    required this.longitude,
-    required this.city,
-  });
-
-  final double latitude;
-  final double longitude;
-  final String city;
-}
-
-double? _doubleOrNull(Object? value) {
-  return switch (value) {
-    int item => item.toDouble(),
-    double item => item,
-    String item => double.tryParse(item),
-    _ => null,
-  };
-}
-
-int? _intOrNull(Object? value) {
-  return switch (value) {
-    int item => item,
-    double item => item.round(),
-    String item => int.tryParse(item),
-    _ => null,
-  };
-}
-
-String _weatherLabel(int code) {
-  if (code == 0) return '晴';
-  if (code == 1 || code == 2) return '少云';
-  if (code == 3) return '多云';
-  if (code == 45 || code == 48) return '雾';
-  if (code >= 51 && code <= 57) return '毛毛雨';
-  if (code >= 61 && code <= 67) return '雨';
-  if (code >= 71 && code <= 77) return '雪';
-  if (code >= 80 && code <= 82) return '阵雨';
-  if (code >= 85 && code <= 86) return '阵雪';
-  if (code >= 95) return '雷雨';
-  return '天气';
 }

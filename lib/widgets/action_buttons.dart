@@ -36,7 +36,7 @@ class TimerActions extends StatelessWidget {
     final running = phase == TimerPhase.running;
     final paused = phase == TimerPhase.paused;
     final canStop = phase != TimerPhase.idle;
-    final canSkip = running && mode != TimerMode.focus;
+    final canSkip = running && (mode == TimerMode.shortBreak || mode == TimerMode.longBreak);
     final scheme = Theme.of(context).colorScheme;
     final accent = running ? scheme.primary : scheme.outlineVariant;
     return LayoutBuilder(

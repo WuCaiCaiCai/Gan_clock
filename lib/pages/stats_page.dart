@@ -74,7 +74,7 @@ class _StatsPageState extends State<StatsPage> {
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: 720),
                     child: ListView(
-                      padding: const EdgeInsets.fromLTRB(20, 24, 20, 112),
+                      padding: const EdgeInsets.fromLTRB(20, 10, 20, 112),
                       children: [
                         _TodayStats(data: widget.data),
                         const SizedBox(height: 16),

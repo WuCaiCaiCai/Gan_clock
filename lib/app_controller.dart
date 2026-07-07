@@ -7,6 +7,7 @@ import 'completion_feedback.dart';
 import 'models.dart';
 import 'storage.dart';
 import 'timer_engine.dart';
+import 'utils.dart';
 
 class AppController extends ChangeNotifier {
   AppController({
@@ -106,7 +107,15 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> stop() async {
+    final wasCountUp = _data.timer.mode == TimerMode.countUp;
+    final elapsedBeforeStop = wasCountUp ? _data.timer.remainingSeconds : 0;
     await _replaceData(_timerEngine.stop(_data));
+    if (wasCountUp) {
+      _message = elapsedBeforeStop >= FocusSession.minimumRecordedSeconds
+          ? '正计时已停止，专注 ${formatHours(elapsedBeforeStop)} 已保存'
+          : '已停止（不足 1 分钟，未记录）';
+      _notify();
+    }
   }
 
   Future<void> skip() async {
