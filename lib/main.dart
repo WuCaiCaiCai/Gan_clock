@@ -1088,8 +1088,14 @@ class _StatsSheetOverlay extends StatelessWidget {
           : const Duration(milliseconds: 320),
       curve: visible ? Curves.easeOutCubic : Curves.easeInCubic,
       onEnd: visible ? null : onAnimationEnd,
-      child: IgnorePointer(
-          ignoring: !visible,
+      child: AnimatedOpacity(
+        opacity: visible ? 1 : 0,
+        duration: motionDisabled
+            ? const Duration(milliseconds: 80)
+            : const Duration(milliseconds: 220),
+        curve: visible ? Curves.easeOutCubic : Curves.easeInCubic,
+        child: IgnorePointer(
+            ignoring: !visible,
             child: ColoredBox(
             color: scheme.surface,
             child: Column(
@@ -1126,6 +1132,7 @@ class _StatsSheetOverlay extends StatelessWidget {
                 ),
               ),
             ],
+          ),
           ),
           ),
         ),

@@ -32,119 +32,106 @@ class TimerActions extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final running = phase == TimerPhase.running;
-    final paused = phase == TimerPhase.paused;
     final canStop = phase != TimerPhase.idle;
 
-    return Row(
+    return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        _PrimaryButton(
-          running: running,
-          paused: paused,
-          onPressed: running
-              ? controller.pause
-              : () {
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            if (canStop)
+              _IconBtn(
+                icon: Icons.stop,
+                tooltip: '停止',
+                onPressed: () {
                   if (hapticsEnabled) unawaited(onUiHaptic());
-                  controller.start();
+                  controller.stop();
                 },
+              ),
+            if (canStop) const SizedBox(width: 20),
+            _IconBtn(
+              icon: keepScreenOn ? Icons.lightbulb : Icons.lightbulb_outline,
+              tooltip: keepScreenOn ? '关闭常亮' : '屏幕常亮',
+              selected: keepScreenOn,
+              onPressed: onToggleKeepScreenOn,
+            ),
+            const SizedBox(width: 20),
+            _IconBtn(
+              icon: Icons.bar_chart_outlined,
+              tooltip: '统计',
+              onPressed: onOpenStats,
+            ),
+            const SizedBox(width: 20),
+            _IconBtn(
+              icon: Icons.settings_outlined,
+              tooltip: '设置',
+              onPressed: onOpenSettings,
+            ),
+          ],
         ),
-        if (canStop) ...[
-          const SizedBox(width: 8),
-          _FlatIconBtn(
-            icon: Icons.stop,
-            tooltip: '停止',
-            onPressed: () {
-              if (hapticsEnabled) unawaited(onUiHaptic());
-              controller.stop();
-            },
+        const SizedBox(height: 10),
+        SizedBox(
+          width: double.infinity,
+          child: Material(
+            color: running
+                ? Theme.of(context).colorScheme.primary
+                : Theme.of(context).colorScheme.primaryContainer,
+            borderRadius: BorderRadius.circular(12),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: running
+                  ? controller.pause
+                  : () {
+                      if (hapticsEnabled) unawaited(onUiHaptic());
+                      controller.start();
+                    },
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 220),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    key: ValueKey(running),
+                    children: [
+                      Icon(
+                        running ? Icons.pause : Icons.play_arrow,
+                        size: 24,
+                        color: running
+                            ? Theme.of(context).colorScheme.onPrimary
+                            : Theme.of(context).colorScheme.onPrimaryContainer,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        running
+                            ? '暂停'
+                            : phase == TimerPhase.paused
+                                ? '继续'
+                                : '开始',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 16,
+                          color: running
+                              ? Theme.of(context).colorScheme.onPrimary
+                              : Theme.of(
+                                  context,
+                                ).colorScheme.onPrimaryContainer,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           ),
-        ],
-        const SizedBox(width: 8),
-        _FlatIconBtn(
-          icon: keepScreenOn ? Icons.lightbulb : Icons.lightbulb_outline,
-          tooltip: keepScreenOn ? '关闭常亮' : '屏幕常亮',
-          selected: keepScreenOn,
-          onPressed: onToggleKeepScreenOn,
-        ),
-        const SizedBox(width: 8),
-        _FlatIconBtn(
-          icon: Icons.bar_chart_outlined,
-          tooltip: '统计',
-          onPressed: onOpenStats,
-        ),
-        const SizedBox(width: 8),
-        _FlatIconBtn(
-          icon: Icons.settings_outlined,
-          tooltip: '设置',
-          onPressed: onOpenSettings,
         ),
       ],
     );
   }
 }
 
-class _PrimaryButton extends StatelessWidget {
-  const _PrimaryButton({
-    required this.running,
-    required this.paused,
-    required this.onPressed,
-  });
-
-  final bool running;
-  final bool paused;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Container(
-      decoration: BoxDecoration(
-        color: running ? scheme.primary : scheme.primaryContainer,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(12),
-          onTap: onPressed,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 220),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                key: ValueKey(running),
-                children: [
-                  Icon(
-                    running ? Icons.pause : Icons.play_arrow,
-                    size: 22,
-                    color: running
-                        ? scheme.onPrimary
-                        : scheme.onPrimaryContainer,
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    running ? '暂停' : (paused ? '继续' : '开始'),
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 15,
-                      color: running
-                          ? scheme.onPrimary
-                          : scheme.onPrimaryContainer,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _FlatIconBtn extends StatelessWidget {
-  const _FlatIconBtn({
+class _IconBtn extends StatelessWidget {
+  const _IconBtn({
     required this.icon,
     required this.tooltip,
     required this.onPressed,

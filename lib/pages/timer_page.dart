@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../app_controller.dart';
 import '../app_scope.dart';
@@ -49,54 +50,43 @@ class TimerPage extends StatefulWidget {
 
 class _TimerPageState extends State<TimerPage>
     with SingleTickerProviderStateMixin {
-  late AnimationController _flipController;
-  TimerMode? _displayMode;
+  late final AnimationController _pressController;
+  late final Animation<double> _pressScale;
+  bool _canSwitch = false;
 
   @override
   void initState() {
     super.initState();
-    _flipController = AnimationController(
+    _pressController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 480),
+      duration: const Duration(milliseconds: 180),
     );
-    _displayMode = widget.data.timer.mode;
+    _pressScale = TweenSequence<double>([
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 0.88), weight: 1),
+    ]).animate(CurvedAnimation(parent: _pressController, curve: Curves.easeInCubic));
+    _pressController.addStatusListener(_onPressStatus);
   }
 
-  @override
-  void didUpdateWidget(covariant TimerPage oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.data.timer.mode != _displayMode && !_flipController.isAnimating) {
-      _displayMode = widget.data.timer.mode;
+  void _onPressStatus(AnimationStatus status) {
+    if (status == AnimationStatus.completed && _canSwitch) {
+      _switchMode();
+      _pressController.reverse();
     }
+  }
+
+  void _switchMode() {
+    final timer = widget.data.timer;
+    final isCountUp = timer.mode == TimerMode.countUp;
+    final running = timer.phase == TimerPhase.running;
+    if (running) return;
+    widget.controller.selectMode(isCountUp ? TimerMode.focus : TimerMode.countUp);
   }
 
   @override
   void dispose() {
-    _flipController.dispose();
+    _pressController.removeStatusListener(_onPressStatus);
+    _pressController.dispose();
     super.dispose();
-  }
-
-  void _toggleMode(TimerMode target) {
-    if (widget.data.timer.phase == TimerPhase.running) return;
-    if (_flipController.isAnimating) return;
-    final current = _displayMode == TimerMode.focus ||
-            _displayMode == TimerMode.shortBreak ||
-            _displayMode == TimerMode.longBreak
-        ? TimerMode.focus
-        : TimerMode.countUp;
-    final next = target == TimerMode.focus ? TimerMode.focus : TimerMode.countUp;
-    if (current == next) return;
-
-    final realTarget = next == TimerMode.countUp
-        ? TimerMode.countUp
-        : TimerMode.focus;
-
-    _flipController.forward(from: 0);
-    Future.delayed(const Duration(milliseconds: 240), () {
-      if (!mounted) return;
-      setState(() => _displayMode = realTarget);
-      widget.controller.selectMode(realTarget);
-    });
   }
 
   @override
@@ -108,47 +98,57 @@ class _TimerPageState extends State<TimerPage>
 
     final settings = widget.data.settings;
     final pureDisplay = widget.quiet || widget.oledMode;
-    final showMode = _displayMode ?? timer.mode;
-    final isCountUpMode = showMode == TimerMode.countUp;
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final controlsBottom = 20.0 + MediaQuery.paddingOf(context).bottom;
-        final infoTop = (constraints.maxHeight * 0.20).clamp(28.0, 60.0);
+        final controlsBottom = 14.0 + MediaQuery.paddingOf(context).bottom;
         final quoteTop = (constraints.maxHeight * 0.30).clamp(70.0, 120.0);
-        final bottomReserve = controlsBottom + 100;
+        final bottomReserve = controlsBottom + 150;
         final maxRingDimension = math.min(
           344.0,
           math.max(216.0, constraints.maxHeight - quoteTop - bottomReserve),
         ) * 0.90;
 
-        final progress = _flipController.value;
-        final flipScale = progress <= 0.5
-            ? 1.0 - (progress * 2)
-            : (progress - 0.5) * 2;
-
         final ringWidget = Center(
           child: GestureDetector(
-            onTap: () {
-              if (timer.phase != TimerPhase.running) {
-                _toggleMode(
-                  isCountUpMode ? TimerMode.focus : TimerMode.countUp,
-                );
+            behavior: HitTestBehavior.opaque,
+            onLongPressStart: (_) {
+              if (timer.phase == TimerPhase.running) return;
+              _canSwitch = true;
+              HapticFeedback.heavyImpact();
+              _pressController.forward();
+            },
+            onLongPressEnd: (_) {
+              _canSwitch = false;
+              if (_pressController.isCompleted) {
+                _switchMode();
               }
+              _pressController.reverse().then((_) => _canSwitch = false);
+            },
+            onLongPressCancel: () {
+              _canSwitch = false;
+              _pressController.reverse();
             },
             child: _PipReturnScale(
               active: widget.expandFromPictureInPicture,
               child: _TimerFace(
                 oledMode: widget.oledMode,
-                child: Transform(
-                  alignment: Alignment.center,
-                  transform: Matrix4.identity()..scaleByDouble(flipScale.clamp(0.0, 1.0), 1.0, 1.0, 1.0),
-                  child: TimerProgressRing(
-                    snapshot: timer,
-                    maxDimension: maxRingDimension,
-                    showInnerStatus: false,
-                    oledMode: widget.oledMode,
-                  ),
+                child: AnimatedBuilder(
+                  animation: _pressController,
+                  builder: (context, child) {
+                    final scale = _pressController.isCompleted
+                        ? 0.88
+                        : _pressScale.value;
+                    return Transform.scale(
+                      scale: scale,
+                      child: TimerProgressRing(
+                        snapshot: timer,
+                        maxDimension: maxRingDimension,
+                        showInnerStatus: false,
+                        oledMode: widget.oledMode,
+                      ),
+                    );
+                  },
                 ),
               ),
             ),
@@ -160,15 +160,6 @@ class _TimerPageState extends State<TimerPage>
           onTap: widget.onRequestQuiet,
           child: Stack(
             children: [
-              Positioned(
-                left: 16,
-                right: 16,
-                top: infoTop,
-                child: ChromeFade(
-                  hidden: pureDisplay,
-                  child: const _AmbientInfoRow(),
-                ),
-              ),
               ringWidget,
               Positioned(
                 left: 16,
@@ -183,67 +174,37 @@ class _TimerPageState extends State<TimerPage>
               Positioned(
                 left: 16,
                 right: 16,
-                top: quoteTop + 54,
-                child: ChromeFade(
-                  hidden: pureDisplay || timer.phase == TimerPhase.running,
-                  slideOffset: const Offset(0, -0.04),
-                  child: Center(
-                    child: SegmentedButton<TimerMode>(
-                      showSelectedIcon: false,
-                      style: ButtonStyle(
-                        visualDensity: VisualDensity.compact,
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      ),
-                      segments: const [
-                        ButtonSegment(
-                          value: TimerMode.focus,
-                          label: Text('番茄钟', style: TextStyle(fontSize: 12)),
-                        ),
-                        ButtonSegment(
-                          value: TimerMode.countUp,
-                          label: Text('正计时', style: TextStyle(fontSize: 12)),
-                        ),
-                      ],
-                      selected: {isCountUpMode ? TimerMode.countUp : TimerMode.focus},
-                      onSelectionChanged: (values) => _toggleMode(values.single),
-                    ),
-                  ),
-                ),
-              ),
-              Positioned(
-                left: 16,
-                right: 16,
                 bottom: controlsBottom,
                 child: GestureDetector(
                   onVerticalDragEnd: (details) {
                     if (details.primaryVelocity != null &&
-                        details.primaryVelocity! < -200) {
+                        details.primaryVelocity! < -300) {
                       widget.onSwipeStats();
                     }
                   },
                   child: ChromeFade(
-                  hidden: pureDisplay,
-                  slideOffset: const Offset(0, 0.18),
-                  scale: 0.96,
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      const _CompactAmbientInfo(),
-                      const Spacer(),
-                      TimerActions(
-                        controller: widget.controller,
-                        mode: timer.mode,
-                        phase: timer.phase,
-                        keepScreenOn: settings.keepScreenOnEnabled,
-                        hapticsEnabled: settings.completionHapticsEnabled,
-                        onOpenSettings: widget.onOpenSettings,
-                        onOpenStats: widget.onOpenStats,
-                        onToggleKeepScreenOn: widget.onToggleKeepScreenOn,
-                        onUiHaptic: widget.onUiHaptic,
-                      ),
-                    ],
+                    hidden: pureDisplay,
+                    slideOffset: const Offset(0, 0.18),
+                    scale: 0.96,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const _CompactAmbientInfo(),
+                        const SizedBox(height: 10),
+                        TimerActions(
+                          controller: widget.controller,
+                          mode: timer.mode,
+                          phase: timer.phase,
+                          keepScreenOn: settings.keepScreenOnEnabled,
+                          hapticsEnabled: settings.completionHapticsEnabled,
+                          onOpenSettings: widget.onOpenSettings,
+                          onOpenStats: widget.onOpenStats,
+                          onToggleKeepScreenOn: widget.onToggleKeepScreenOn,
+                          onUiHaptic: widget.onUiHaptic,
+                        ),
+                      ],
+                    ),
                   ),
-                ),
                 ),
               ),
             ],
@@ -254,14 +215,14 @@ class _TimerPageState extends State<TimerPage>
   }
 }
 
-class _AmbientInfoRow extends StatefulWidget {
-  const _AmbientInfoRow();
+class _CompactAmbientInfo extends StatefulWidget {
+  const _CompactAmbientInfo();
 
   @override
-  State<_AmbientInfoRow> createState() => _AmbientInfoRowState();
+  State<_CompactAmbientInfo> createState() => _CompactAmbientInfoState();
 }
 
-class _AmbientInfoRowState extends State<_AmbientInfoRow> {
+class _CompactAmbientInfoState extends State<_CompactAmbientInfo> {
   static const _weatherService = WeatherService();
 
   WeatherSnapshot? _weather;
@@ -305,102 +266,41 @@ class _AmbientInfoRowState extends State<_AmbientInfoRow> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
-    final timeStr = _formatTime(_now);
-    final weatherStr = _weather == null
-        ? '--'
-        : '${_weather!.place} ${_weather!.temperatureC}°';
-
-    return Row(
-      children: [
-        Icon(Icons.schedule, size: 16, color: scheme.onSurfaceVariant),
-        const SizedBox(width: 6),
-        Text(
-          timeStr,
-          style: textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.w600,
-            letterSpacing: 0,
-            color: scheme.onSurface,
-          ),
-        ),
-        const Spacer(),
-        if (AppScope.read(context).data.settings.weatherEnabled) ...[
-          Icon(_weatherIcon(_weather?.condition), size: 16, color: scheme.onSurfaceVariant),
-          const SizedBox(width: 4),
-          Text(
-            weatherStr,
-            style: textTheme.titleLarge?.copyWith(
-              fontWeight: FontWeight.w500,
-              letterSpacing: 0,
-              fontSize: 16,
-              color: scheme.onSurface,
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-}
-
-class _CompactAmbientInfo extends StatelessWidget {
-  const _CompactAmbientInfo();
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
-    final state = context.findAncestorStateOfType<_AmbientInfoRowState>();
-    if (state == null) return const SizedBox.shrink();
-    final now = state._now;
-    final weather = state._weather;
     final settings = AppScope.read(context).data.settings;
-    final timeStr = _formatTime(now);
-    final weatherStr = weather == null
-        ? '--'
-        : '${weather.place} ${weather.temperatureC}°';
+    final timeStr = '${_now.hour.toString().padLeft(2, '0')}:'
+        '${_now.minute.toString().padLeft(2, '0')}';
 
-    return SizedBox(
-      width: 100,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    final ws = _weather;
+    final weatherStr = ws == null ? '--' : '${ws.place} ${ws.temperatureC}°';
+    final wIcon = switch (ws?.condition) {
+      '晴' => Icons.wb_sunny_outlined,
+      '少云' => Icons.filter_drama_outlined,
+      '多云' => Icons.cloud_outlined,
+      '雾' => Icons.foggy,
+      '雪' || '阵雪' => Icons.ac_unit,
+      '雷雨' => Icons.thunderstorm_outlined,
+      '雨' || '阵雨' || '毛毛雨' => Icons.water_drop_outlined,
+      _ => Icons.wb_cloudy_outlined,
+    };
+
+    return Center(
+      child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.schedule, size: 14, color: scheme.onSurfaceVariant),
-              const SizedBox(width: 4),
-              Text(
-                timeStr,
-                style: textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 0,
-                  color: scheme.onSurfaceVariant,
-                ),
-              ),
-            ],
-          ),
+          Icon(Icons.schedule, size: 13, color: scheme.onSurfaceVariant.withAlpha(160)),
+          const SizedBox(width: 4),
+          Text(timeStr,
+            style: textTheme.labelMedium?.copyWith(
+              color: scheme.onSurfaceVariant,
+              fontWeight: FontWeight.w500)),
           if (settings.weatherEnabled) ...[
-            const SizedBox(height: 2),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(_weatherIcon(weather?.condition), size: 14,
-                  color: scheme.onSurfaceVariant),
-                const SizedBox(width: 4),
-                Flexible(
-                  child: Text(
-                    weatherStr,
-                    overflow: TextOverflow.ellipsis,
-                    style: textTheme.titleMedium?.copyWith(
-                      letterSpacing: 0,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                      color: scheme.onSurfaceVariant,
-                    ),
-                  ),
-                ),
-              ],
-            ),
+            const SizedBox(width: 12),
+            Icon(wIcon, size: 13, color: scheme.onSurfaceVariant.withAlpha(160)),
+            const SizedBox(width: 4),
+            Text(weatherStr,
+              style: textTheme.labelMedium?.copyWith(
+                color: scheme.onSurfaceVariant,
+                fontWeight: FontWeight.w500)),
           ],
         ],
       ),
@@ -408,28 +308,8 @@ class _CompactAmbientInfo extends StatelessWidget {
   }
 }
 
-String _formatTime(DateTime value) {
-  final local = value.toLocal();
-  return '${local.hour.toString().padLeft(2, '0')}:'
-      '${local.minute.toString().padLeft(2, '0')}';
-}
-
-IconData _weatherIcon(String? condition) {
-  return switch (condition) {
-    '晴' => Icons.wb_sunny_outlined,
-    '少云' => Icons.filter_drama_outlined,
-    '多云' => Icons.cloud_outlined,
-    '雾' => Icons.foggy,
-    '雪' || '阵雪' => Icons.ac_unit,
-    '雷雨' => Icons.thunderstorm_outlined,
-    '雨' || '阵雨' || '毛毛雨' => Icons.water_drop_outlined,
-    _ => Icons.wb_cloudy_outlined,
-  };
-}
-
 class _TimerFace extends StatelessWidget {
   const _TimerFace({required this.oledMode, required this.child});
-
   final bool oledMode;
   final Widget child;
 
@@ -451,7 +331,6 @@ class _TimerFace extends StatelessWidget {
 
 class _HitokotoLine extends StatefulWidget {
   const _HitokotoLine({required this.mode});
-
   final TimerMode mode;
 
   static const _lines = <TimerMode, List<String>>{
@@ -497,7 +376,6 @@ class _HitokotoLineState extends State<_HitokotoLine> {
   static const _service = HitokotoService();
   static HitokotoQuote? _cachedQuote;
   static Future<HitokotoQuote?>? _pendingQuote;
-
   HitokotoQuote? _quote;
 
   @override
@@ -510,22 +388,18 @@ class _HitokotoLineState extends State<_HitokotoLine> {
   @override
   void didUpdateWidget(covariant _HitokotoLine oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (_quote == null && _cachedQuote != null) {
-      _quote = _cachedQuote;
-    }
+    if (_quote == null && _cachedQuote != null) _quote = _cachedQuote;
   }
 
   void _loadQuote() {
     if (_cachedQuote != null) return;
     final pending = _pendingQuote ??= _service.fetch();
-    unawaited(
-      pending.then((quote) {
-        if (quote == null) return;
-        _cachedQuote = quote;
-        if (!mounted) return;
-        setState(() => _quote = quote);
-      }),
-    );
+    unawaited(pending.then((quote) {
+      if (quote == null) return;
+      _cachedQuote = quote;
+      if (!mounted) return;
+      setState(() => _quote = quote);
+    }));
   }
 
   @override
@@ -557,18 +431,14 @@ class _HitokotoLineState extends State<_HitokotoLine> {
             Icon(Icons.format_quote, size: 18, color: palette.accent),
             const SizedBox(width: 8),
             Flexible(
-              child: Text(
-                message,
-                textAlign: TextAlign.center,
-                maxLines: 2,
+              child: Text(message, textAlign: TextAlign.center, maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.titleMedium?.copyWith(
                   color: scheme.onSurfaceVariant,
                   fontWeight: FontWeight.w500,
                   height: 1.35,
                   letterSpacing: 0,
-                ),
-              ),
+                )),
             ),
           ],
         ),
@@ -579,7 +449,6 @@ class _HitokotoLineState extends State<_HitokotoLine> {
 
 class _PipReturnScale extends StatelessWidget {
   const _PipReturnScale({required this.active, required this.child});
-
   final bool active;
   final Widget child;
 
@@ -591,9 +460,8 @@ class _PipReturnScale extends StatelessWidget {
       duration: const Duration(milliseconds: 280),
       curve: Curves.easeOutCubic,
       child: child,
-      builder: (context, scale, child) {
-        return Transform.scale(scale: scale, child: child);
-      },
+      builder: (context, scale, child) =>
+          Transform.scale(scale: scale, child: child),
     );
   }
 }

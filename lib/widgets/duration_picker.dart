@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -28,12 +31,11 @@ class _DurationPickerState extends State<DurationPicker> {
   late final FixedExtentScrollController _minuteController;
   int _liveHours = 0;
   int _liveMinutes = 0;
+  Timer? _notifyTimer;
 
   int get maxHours => widget.maxMinutes ~/ 60;
-
   int get currentHours => (widget.valueMinutes ~/ 60).clamp(0, maxHours);
-
-  int get currentMinutes => (widget.valueMinutes % 60);
+  int get currentMinutes => widget.valueMinutes % 60;
 
   @override
   void initState() {
@@ -54,43 +56,44 @@ class _DurationPickerState extends State<DurationPicker> {
       _liveMinutes = currentMinutes;
       final h = currentHours;
       final m = _minuteIndex(currentMinutes);
-      if (_hourController.selectedItem != h) {
-        _hourController.jumpToItem(h);
-      }
-      if (_minuteController.selectedItem != m) {
-        _minuteController.jumpToItem(m);
-      }
+      if (_hourController.selectedItem != h) _hourController.jumpToItem(h);
+      if (_minuteController.selectedItem != m) _minuteController.jumpToItem(m);
     }
   }
 
-  int _minuteIndex(int minutes) {
-    return ((minutes ~/ 5) * 5 < 0 ? 0 : (minutes ~/ 5)).clamp(0, 11);
-  }
-
-  int _minuteValue(int index) {
-    return (index * 5).clamp(0, 55);
-  }
+  int _minuteIndex(int minutes) => (minutes ~/ 5).clamp(0, 11);
+  int _minuteValue(int index) => (index * 5).clamp(0, 55);
 
   void _notifyChange() {
-    final hours = _hourController.selectedItem;
-    final minuteIndex = _minuteController.selectedItem;
-    final minutes = _minuteValue(minuteIndex);
-    if (hours != _liveHours || minutes != _liveMinutes) {
-      setState(() {
-        _liveHours = hours;
-        _liveMinutes = minutes;
-      });
-    }
-    final total = (hours * 60 + minutes)
-        .clamp(widget.minMinutes, widget.maxMinutes);
-    if (total != widget.valueMinutes) {
-      HapticFeedback.selectionClick();
-      widget.onChanged(total);
-    }
+    _notifyTimer?.cancel();
+    _notifyTimer = Timer(const Duration(milliseconds: 160), () {
+      if (!mounted) return;
+      final hours = _hourController.selectedItem;
+      final minuteIndex = _minuteController.selectedItem;
+      final minutes = _minuteValue(minuteIndex);
+      if (hours != _liveHours || minutes != _liveMinutes) {
+        setState(() {
+          _liveHours = hours;
+          _liveMinutes = minutes;
+        });
+      }
+      final total = (hours * 60 + minutes).clamp(widget.minMinutes, widget.maxMinutes);
+      if (total != widget.valueMinutes) {
+        HapticFeedback.selectionClick();
+        widget.onChanged(total);
+      }
+    });
+  }
+
+  String _formatDisplay(int hours, int minutes) {
+    if (hours == 0) return '$minutes 分钟';
+    if (minutes == 0) return '$hours 小时';
+    return '$hours 小时 $minutes 分钟';
   }
 
   @override
   void dispose() {
+    _notifyTimer?.cancel();
     _hourController.dispose();
     _minuteController.dispose();
     super.dispose();
@@ -100,10 +103,7 @@ class _DurationPickerState extends State<DurationPicker> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
-    const itemExtent = 44.0;
-
-    final displayHours = _liveHours;
-    final displayMinutes = _liveMinutes;
+    const itemExtent = 40.0;
 
     return Card(
       child: Padding(
@@ -115,11 +115,8 @@ class _DurationPickerState extends State<DurationPicker> {
               children: [
                 Icon(widget.icon, color: scheme.primary, size: 20),
                 const SizedBox(width: 10),
-                Text(
-                  widget.label,
-                  style: textTheme.titleMedium
-                      ?.copyWith(fontWeight: FontWeight.w600),
-                ),
+                Text(widget.label,
+                  style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
                 const Spacer(),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -128,7 +125,7 @@ class _DurationPickerState extends State<DurationPicker> {
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
-                    _formatDisplay(displayHours, displayMinutes),
+                    _formatDisplay(_liveHours, _liveMinutes),
                     style: textTheme.bodyMedium?.copyWith(
                       color: scheme.onPrimaryContainer,
                       fontWeight: FontWeight.w600,
@@ -137,7 +134,7 @@ class _DurationPickerState extends State<DurationPicker> {
                 ),
               ],
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 12),
             SizedBox(
               height: itemExtent * 3,
               child: Row(
@@ -149,28 +146,24 @@ class _DurationPickerState extends State<DurationPicker> {
                       itemExtent: itemExtent,
                       formatLabel: (i) => i.toString(),
                       suffix: '时',
-                      onSelectedItemChanged: (_) => _notifyChange(),
+                      onChanged: _notifyChange,
                     ),
                   ),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 6),
-                    child: Text(
-                      ':',
-                      style: textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        color: scheme.onSurface.withAlpha(180),
-                      ),
-                    ),
+                    child: Text(':', style: textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: scheme.onSurface.withAlpha(180),
+                    )),
                   ),
                   Expanded(
                     child: _WheelColumn(
                       controller: _minuteController,
                       itemCount: 12,
                       itemExtent: itemExtent,
-                      formatLabel: (i) =>
-                          _minuteValue(i).toString().padLeft(2, '0'),
+                      formatLabel: (i) => _minuteValue(i).toString().padLeft(2, '0'),
                       suffix: '分',
-                      onSelectedItemChanged: (_) => _notifyChange(),
+                      onChanged: _notifyChange,
                     ),
                   ),
                 ],
@@ -181,12 +174,6 @@ class _DurationPickerState extends State<DurationPicker> {
       ),
     );
   }
-
-  String _formatDisplay(int hours, int minutes) {
-    if (hours == 0) return '$minutes 分钟';
-    if (minutes == 0) return '$hours 小时';
-    return '$hours 小时 $minutes 分钟';
-  }
 }
 
 class _WheelColumn extends StatelessWidget {
@@ -196,7 +183,7 @@ class _WheelColumn extends StatelessWidget {
     required this.itemExtent,
     required this.formatLabel,
     required this.suffix,
-    required this.onSelectedItemChanged,
+    required this.onChanged,
   });
 
   final FixedExtentScrollController controller;
@@ -204,68 +191,48 @@ class _WheelColumn extends StatelessWidget {
   final double itemExtent;
   final String Function(int) formatLabel;
   final String suffix;
-  final ValueChanged<int> onSelectedItemChanged;
+  final VoidCallback onChanged;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
 
-    return Stack(
+    return CupertinoPicker(
+      scrollController: controller,
+      itemExtent: itemExtent,
+      backgroundColor: Colors.transparent,
+      selectionOverlay: Container(
+        decoration: BoxDecoration(
+          color: scheme.primary.withAlpha(12),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: scheme.primary.withAlpha(28)),
+        ),
+      ),
+      onSelectedItemChanged: (_) => onChanged(),
       children: [
-        Positioned.fill(
-          child: Center(
-            child: Container(
-              height: itemExtent,
-              decoration: BoxDecoration(
-                color: scheme.primary.withAlpha(12),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: scheme.primary.withAlpha(28),
+        for (var i = 0; i < itemCount; i++)
+          Center(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  formatLabel(i),
+                  style: textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: scheme.onSurface,
+                  ),
                 ),
-              ),
+                const SizedBox(width: 4),
+                Text(
+                  suffix,
+                  style: textTheme.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
             ),
           ),
-        ),
-        ListWheelScrollView.useDelegate(
-          controller: controller,
-          itemExtent: itemExtent,
-          diameterRatio: 1.3,
-          perspective: 0.002,
-          onSelectedItemChanged: onSelectedItemChanged,
-          childDelegate: ListWheelChildBuilderDelegate(
-            builder: (context, index) {
-              final selected = controller.selectedItem == index;
-              return Center(
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      formatLabel(index),
-                      style: textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        color: selected
-                            ? scheme.primary
-                            : scheme.onSurfaceVariant.withAlpha(120),
-                        fontSize: selected ? null : 20,
-                      ),
-                    ),
-                    const SizedBox(width: 3),
-                    Text(
-                      suffix,
-                      style: textTheme.bodySmall?.copyWith(
-                        color: selected
-                            ? scheme.primary.withAlpha(200)
-                            : scheme.onSurfaceVariant.withAlpha(80),
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            },
-            childCount: itemCount,
-          ),
-        ),
       ],
     );
   }

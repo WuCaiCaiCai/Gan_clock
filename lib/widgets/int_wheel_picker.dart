@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -30,8 +33,8 @@ class IntWheelPicker extends StatefulWidget {
 class _IntWheelPickerState extends State<IntWheelPicker> {
   late final FixedExtentScrollController _controller;
   late final List<int> _options;
-  int _lastNotified = 0;
   int _liveValue = 0;
+  Timer? _notifyTimer;
 
   @override
   void initState() {
@@ -42,7 +45,6 @@ class _IntWheelPickerState extends State<IntWheelPicker> {
     final initialIndex = _options
         .indexWhere((v) => v >= widget.value)
         .clamp(0, _options.length - 1);
-    _lastNotified = widget.value;
     _liveValue = widget.value;
     _controller = FixedExtentScrollController(initialItem: initialIndex);
   }
@@ -55,23 +57,35 @@ class _IntWheelPickerState extends State<IntWheelPicker> {
       final idx = _options
           .indexWhere((v) => v >= widget.value)
           .clamp(0, _options.length - 1);
-      if (_controller.selectedItem != idx) {
-        _controller.jumpToItem(idx);
-      }
+      if (_controller.selectedItem != idx) _controller.jumpToItem(idx);
     }
   }
 
   @override
   void dispose() {
+    _notifyTimer?.cancel();
     _controller.dispose();
     super.dispose();
+  }
+
+  void _onChanged() {
+    _notifyTimer?.cancel();
+    _notifyTimer = Timer(const Duration(milliseconds: 160), () {
+      if (!mounted) return;
+      final next = _options[_controller.selectedItem];
+      if (next != _liveValue) setState(() => _liveValue = next);
+      if (next != widget.value) {
+        HapticFeedback.selectionClick();
+        widget.onChanged(next);
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
-    const itemExtent = 44.0;
+    const itemExtent = 40.0;
 
     return Card(
       child: Padding(
@@ -83,11 +97,8 @@ class _IntWheelPickerState extends State<IntWheelPicker> {
               children: [
                 Icon(widget.icon, color: scheme.primary, size: 20),
                 const SizedBox(width: 10),
-                Text(
-                  widget.label,
-                  style: textTheme.titleMedium
-                      ?.copyWith(fontWeight: FontWeight.w600),
-                ),
+                Text(widget.label,
+                  style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
                 const Spacer(),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -95,75 +106,50 @@ class _IntWheelPickerState extends State<IntWheelPicker> {
                     color: scheme.primaryContainer.withAlpha(120),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Text(
-                    _liveValue.toString(),
+                  child: Text(_liveValue.toString(),
                     style: textTheme.bodyMedium?.copyWith(
                       color: scheme.onPrimaryContainer,
                       fontWeight: FontWeight.w600,
-                    ),
-                  ),
+                    )),
                 ),
               ],
             ),
             const SizedBox(height: 12),
             SizedBox(
               height: itemExtent * 3,
-              child: Stack(
+              child: CupertinoPicker(
+                scrollController: _controller,
+                itemExtent: itemExtent,
+                backgroundColor: Colors.transparent,
+                selectionOverlay: Container(
+                  decoration: BoxDecoration(
+                    color: scheme.primary.withAlpha(12),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: scheme.primary.withAlpha(28)),
+                  ),
+                ),
+                onSelectedItemChanged: (_) => _onChanged(),
                 children: [
-                  Positioned.fill(
-                    child: Center(
-                      child: Container(
-                        height: itemExtent,
-                        decoration: BoxDecoration(
-                          color: scheme.primary.withAlpha(12),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(
-                            color: scheme.primary.withAlpha(28),
+                  for (var i = 0; i < _options.length; i++)
+                    Center(
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            _options[i].toString(),
+                            style: textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.w700,
+                              color: scheme.onSurface,
+                            ),
                           ),
-                        ),
+                          const SizedBox(width: 4),
+                          Text(widget.suffix,
+                            style: textTheme.bodySmall?.copyWith(
+                              color: scheme.onSurfaceVariant,
+                            )),
+                        ],
                       ),
                     ),
-                  ),
-                  ListWheelScrollView.useDelegate(
-                    controller: _controller,
-                    itemExtent: itemExtent,
-                    diameterRatio: 1.3,
-                    perspective: 0.002,
-                    onSelectedItemChanged: _onChanged,
-                    childDelegate: ListWheelChildBuilderDelegate(
-                      builder: (context, index) {
-                        final selected = _controller.selectedItem == index;
-                        final option = _options[index];
-                        return Center(
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                option.toString(),
-                                style: textTheme.titleLarge?.copyWith(
-                                  fontWeight: FontWeight.w700,
-                                  color: selected
-                                      ? scheme.primary
-                                      : scheme.onSurfaceVariant.withAlpha(120),
-                                  fontSize: selected ? null : 20,
-                                ),
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                widget.suffix,
-                                style: textTheme.bodySmall?.copyWith(
-                                  color: selected
-                                      ? scheme.primary.withAlpha(200)
-                                      : scheme.onSurfaceVariant.withAlpha(80),
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                      childCount: _options.length,
-                    ),
-                  ),
                 ],
               ),
             ),
@@ -171,16 +157,5 @@ class _IntWheelPickerState extends State<IntWheelPicker> {
         ),
       ),
     );
-  }
-
-  void _onChanged(int index) {
-    final next = _options[index];
-    if (next != _liveValue) {
-      setState(() => _liveValue = next);
-    }
-    if (next == _lastNotified) return;
-    _lastNotified = next;
-    HapticFeedback.selectionClick();
-    widget.onChanged(next);
   }
 }
