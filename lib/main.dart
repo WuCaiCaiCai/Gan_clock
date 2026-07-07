@@ -511,11 +511,11 @@ class _TomatoHomePageState extends State<TomatoHomePage>
                           onSubPageOpenChanged: _handleStatsSubPageChanged,
                         ),
                     ],
-                  ),
           ),
-        ),
-      ),
-    );
+          ),
+    ),
+  ),
+);
   }
 
   Widget _pageTransition({
@@ -592,8 +592,8 @@ class _TomatoHomePageState extends State<TomatoHomePage>
           onOpenStats: _openStatsSheet,
           onOpenSettings: () => _selectPage(2),
           onToggleKeepScreenOn: _toggleKeepScreenOn,
-          onTogglePictureInPicture: _togglePictureInPicture,
           onUiHaptic: _emitUiHaptic,
+          onSwipeStats: _openStatsSheet,
         );
       case 2:
         return SettingsPage(
@@ -613,8 +613,8 @@ class _TomatoHomePageState extends State<TomatoHomePage>
           onOpenStats: _openStatsSheet,
           onOpenSettings: () => _selectPage(2),
           onToggleKeepScreenOn: _toggleKeepScreenOn,
-          onTogglePictureInPicture: _togglePictureInPicture,
           onUiHaptic: _emitUiHaptic,
+          onSwipeStats: _openStatsSheet,
         );
     }
   }
@@ -753,36 +753,6 @@ class _TomatoHomePageState extends State<TomatoHomePage>
       _pipTransitioning = true;
       _returningFromPictureInPicture = false;
     });
-  }
-
-  void _togglePictureInPicture(bool enabled) {
-    final controller = _controller;
-    if (controller == null) {
-      return;
-    }
-    final settings = controller.data.settings;
-    if (settings.pictureInPictureEnabled == enabled) {
-      return;
-    }
-    unawaited(
-      controller.updateSettings(
-        settings.copyWith(pictureInPictureEnabled: enabled),
-      ),
-    );
-    if (!enabled) {
-      _pipTransitioning = false;
-      _inPictureInPicture = false;
-      unawaited(
-        PlatformControls.setPipState(
-          enabled: false,
-          title: '',
-          subtitle: '',
-          keepScreenOn: settings.keepScreenOnEnabled,
-          totalSeconds: 1,
-          remainingSeconds: 1,
-        ),
-      );
-    }
   }
 
   void _handleUserActivity() {
@@ -1109,16 +1079,16 @@ class _StatsSheetOverlay extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final motionDisabled = MediaQuery.disableAnimationsOf(context);
-    final duration = motionDisabled
-        ? const Duration(milliseconds: 80)
-        : const Duration(milliseconds: 280);
 
     return Positioned.fill(
-      child: AnimatedOpacity(
-        opacity: visible ? 1 : 0,
-        duration: duration,
-        onEnd: onAnimationEnd,
-        child: IgnorePointer(
+      child: AnimatedSlide(
+      offset: visible ? Offset.zero : const Offset(0, 1),
+      duration: motionDisabled
+          ? const Duration(milliseconds: 80)
+          : const Duration(milliseconds: 320),
+      curve: visible ? Curves.easeOutCubic : Curves.easeInCubic,
+      onEnd: visible ? null : onAnimationEnd,
+      child: IgnorePointer(
           ignoring: !visible,
             child: ColoredBox(
             color: scheme.surface,

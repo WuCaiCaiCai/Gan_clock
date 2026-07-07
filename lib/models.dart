@@ -73,7 +73,7 @@ extension AppThemeModeLabels on AppThemeMode {
   String get label {
     switch (this) {
       case AppThemeMode.system:
-        return '跟随系统';
+        return '系统';
       case AppThemeMode.light:
         return '浅色';
       case AppThemeMode.dark:

@@ -121,6 +121,18 @@ class _SettingsPageState extends State<SettingsPage> {
                     );
                   },
                 ),
+                SwitchListTile(
+                  contentPadding: const EdgeInsets.fromLTRB(16, 4, 12, 4),
+                  secondary: const Icon(Icons.picture_in_picture_alt),
+                  title: const Text('画中画'),
+                  subtitle: const Text('后台自动进入小窗计时'),
+                  value: settings.pictureInPictureEnabled,
+                  onChanged: (value) {
+                    controller.updateSettings(
+                      settings.copyWith(pictureInPictureEnabled: value),
+                    );
+                  },
+                ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
                   child: Row(
@@ -984,11 +996,11 @@ class _WeatherSettingsContentState extends State<_WeatherSettingsContent> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('和风天气 API Key',
+                Text('和风天气 API Key（可选）',
                   style: Theme.of(context).textTheme.titleSmall
                       ?.copyWith(fontWeight: FontWeight.w600)),
                 const SizedBox(height: 4),
-                Text('在 dev.qweather.com 免费注册获取',
+                Text('填入 Key 使用和风天气，留空自动使用 Open-Meteo',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   )),

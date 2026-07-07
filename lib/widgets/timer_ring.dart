@@ -156,9 +156,9 @@ class _TimerProgressRingState extends State<TimerProgressRing>
                           return CustomPaint(
                             painter: _RingPainter(
                               progress: value,
-                              color: oled ? Colors.white : palette.accent,
+                              color: oled ? const Color(0xFF666666) : palette.accent,
                               trackColor: oled
-                                  ? Colors.white24
+                                  ? const Color(0xFF181818)
                                   : palette.accent.withAlpha(
                                       scheme.brightness == Brightness.dark ? 76 : 52,
                                     ),
@@ -181,7 +181,7 @@ class _TimerProgressRingState extends State<TimerProgressRing>
                                     child: Icon(
                                      modeIcon(widget.snapshot.mode),
                                      key: ValueKey(widget.snapshot.mode),
-                                     color: palette.accent,
+                                     color: oled ? const Color(0xFF888888) : palette.accent,
                                      size: 30,
                                   ),
                                 ),

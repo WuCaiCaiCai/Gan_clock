@@ -13,7 +13,7 @@ import '../widgets/action_buttons.dart';
 import '../widgets/chrome_fade.dart';
 import '../widgets/timer_ring.dart';
 
-class TimerPage extends StatelessWidget {
+class TimerPage extends StatefulWidget {
   const TimerPage({
     required this.controller,
     required this.data,
@@ -25,8 +25,8 @@ class TimerPage extends StatelessWidget {
     required this.onOpenStats,
     required this.onOpenSettings,
     required this.onToggleKeepScreenOn,
-    required this.onTogglePictureInPicture,
     required this.onUiHaptic,
+    required this.onSwipeStats,
     super.key,
   });
 
@@ -40,84 +40,124 @@ class TimerPage extends StatelessWidget {
   final VoidCallback onOpenStats;
   final VoidCallback onOpenSettings;
   final VoidCallback onToggleKeepScreenOn;
-  final ValueChanged<bool> onTogglePictureInPicture;
   final Future<void> Function() onUiHaptic;
+  final VoidCallback onSwipeStats;
+
+  @override
+  State<TimerPage> createState() => _TimerPageState();
+}
+
+class _TimerPageState extends State<TimerPage>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _flipController;
+  TimerMode? _displayMode;
+
+  @override
+  void initState() {
+    super.initState();
+    _flipController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 480),
+    );
+    _displayMode = widget.data.timer.mode;
+  }
+
+  @override
+  void didUpdateWidget(covariant TimerPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.data.timer.mode != _displayMode && !_flipController.isAnimating) {
+      _displayMode = widget.data.timer.mode;
+    }
+  }
+
+  @override
+  void dispose() {
+    _flipController.dispose();
+    super.dispose();
+  }
+
+  void _toggleMode(TimerMode target) {
+    if (widget.data.timer.phase == TimerPhase.running) return;
+    if (_flipController.isAnimating) return;
+    final current = _displayMode == TimerMode.focus ||
+            _displayMode == TimerMode.shortBreak ||
+            _displayMode == TimerMode.longBreak
+        ? TimerMode.focus
+        : TimerMode.countUp;
+    final next = target == TimerMode.focus ? TimerMode.focus : TimerMode.countUp;
+    if (current == next) return;
+
+    final realTarget = next == TimerMode.countUp
+        ? TimerMode.countUp
+        : TimerMode.focus;
+
+    _flipController.forward(from: 0);
+    Future.delayed(const Duration(milliseconds: 240), () {
+      if (!mounted) return;
+      setState(() => _displayMode = realTarget);
+      widget.controller.selectMode(realTarget);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
-    final timer = data.timer;
-    if (inPictureInPicture) {
+    final timer = widget.data.timer;
+    if (widget.inPictureInPicture) {
       return PipTimerBox(snapshot: timer);
     }
 
-    final settings = data.settings;
-    final pureDisplay = quiet || oledMode;
+    final settings = widget.data.settings;
+    final pureDisplay = widget.quiet || widget.oledMode;
+    final showMode = _displayMode ?? timer.mode;
+    final isCountUpMode = showMode == TimerMode.countUp;
+
     return LayoutBuilder(
       builder: (context, constraints) {
-        final landscape = constraints.maxWidth > constraints.maxHeight;
-        final controlsBottom = 28.0 + MediaQuery.paddingOf(context).bottom;
+        final controlsBottom = 20.0 + MediaQuery.paddingOf(context).bottom;
         final infoTop = (constraints.maxHeight * 0.20).clamp(28.0, 60.0);
         final quoteTop = (constraints.maxHeight * 0.30).clamp(70.0, 120.0);
-        final bottomReserve = controlsBottom + (landscape ? 20 : 104);
-        final maxRingDimension = landscape
-            ? math.min(280.0, constraints.maxHeight - 48)
-            : math.min(
-                344.0,
-                math.max(216.0, constraints.maxHeight - quoteTop - bottomReserve),
-              ) * 0.94;
+        final bottomReserve = controlsBottom + 100;
+        final maxRingDimension = math.min(
+          344.0,
+          math.max(216.0, constraints.maxHeight - quoteTop - bottomReserve),
+        ) * 0.90;
+
+        final progress = _flipController.value;
+        final flipScale = progress <= 0.5
+            ? 1.0 - (progress * 2)
+            : (progress - 0.5) * 2;
 
         final ringWidget = Center(
           child: GestureDetector(
             onTap: () {
-              if (timer.phase != TimerPhase.running) _showModeSheet(context);
+              if (timer.phase != TimerPhase.running) {
+                _toggleMode(
+                  isCountUpMode ? TimerMode.focus : TimerMode.countUp,
+                );
+              }
             },
             child: _PipReturnScale(
-              active: expandFromPictureInPicture,
+              active: widget.expandFromPictureInPicture,
               child: _TimerFace(
-                oledMode: oledMode,
-                child: TimerProgressRing(
-                  snapshot: timer,
-                  maxDimension: maxRingDimension,
-                  showInnerStatus: false,
-                  oledMode: oledMode,
+                oledMode: widget.oledMode,
+                child: Transform(
+                  alignment: Alignment.center,
+                  transform: Matrix4.identity()..scaleByDouble(flipScale.clamp(0.0, 1.0), 1.0, 1.0, 1.0),
+                  child: TimerProgressRing(
+                    snapshot: timer,
+                    maxDimension: maxRingDimension,
+                    showInnerStatus: false,
+                    oledMode: widget.oledMode,
+                  ),
                 ),
               ),
             ),
           ),
         );
 
-        final rightColumn = Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ChromeFade(
-              hidden: pureDisplay,
-              slideOffset: const Offset(0, -0.08),
-              child: _HitokotoLine(mode: timer.mode),
-            ),
-            const Spacer(),
-            ChromeFade(
-              hidden: pureDisplay,
-              slideOffset: const Offset(0, 0.18),
-              scale: 0.96,
-              child: TimerActions(
-                controller: controller,
-                mode: timer.mode,
-                phase: timer.phase,
-                keepScreenOn: settings.keepScreenOnEnabled,
-                pictureInPictureEnabled: settings.pictureInPictureEnabled,
-                hapticsEnabled: settings.completionHapticsEnabled,
-                onOpenSettings: onOpenSettings,
-                onToggleKeepScreenOn: onToggleKeepScreenOn,
-                onTogglePictureInPicture: onTogglePictureInPicture,
-                onUiHaptic: onUiHaptic,
-              ),
-            ),
-          ],
-        );
-
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
-          onTap: onRequestQuiet,
+          onTap: widget.onRequestQuiet,
           child: Stack(
             children: [
               Positioned(
@@ -126,146 +166,102 @@ class TimerPage extends StatelessWidget {
                 top: infoTop,
                 child: ChromeFade(
                   hidden: pureDisplay,
-                  child: const _AmbientInfoLine(),
+                  child: const _AmbientInfoRow(),
                 ),
               ),
-              if (landscape)
-                Positioned(
-                  left: 24,
-                  right: 24,
-                  top: quoteTop + 24,
-                  bottom: controlsBottom,
-                  child: Row(
-                    children: [
-                      Expanded(child: Center(child: ringWidget)),
-                      const SizedBox(width: 24),
-                      SizedBox(width: math.min(280, constraints.maxWidth * 0.35), child: rightColumn),
-                    ],
-                  ),
-                )
-              else ...[
-                ringWidget,
-                Positioned(
-                  left: 24,
-                  right: 24,
-                  top: quoteTop,
-                  child: ChromeFade(
-                    hidden: pureDisplay,
-                    slideOffset: const Offset(0, -0.08),
-                    child: _HitokotoLine(mode: timer.mode),
-                  ),
+              ringWidget,
+              Positioned(
+                left: 16,
+                right: 16,
+                top: quoteTop,
+                child: ChromeFade(
+                  hidden: pureDisplay,
+                  slideOffset: const Offset(0, -0.08),
+                  child: _HitokotoLine(mode: timer.mode),
                 ),
-                Positioned(
-                  left: 16,
-                  right: 16,
-                  bottom: controlsBottom,
-                  child: ChromeFade(
-                    hidden: pureDisplay,
-                    slideOffset: const Offset(0, 0.18),
-                    scale: 0.96,
-                    child: TimerActions(
-                      controller: controller,
-                      mode: timer.mode,
-                      phase: timer.phase,
-                      keepScreenOn: settings.keepScreenOnEnabled,
-                      pictureInPictureEnabled: settings.pictureInPictureEnabled,
-                      hapticsEnabled: settings.completionHapticsEnabled,
-                      onOpenSettings: onOpenSettings,
-                      onToggleKeepScreenOn: onToggleKeepScreenOn,
-                      onTogglePictureInPicture: onTogglePictureInPicture,
-                      onUiHaptic: onUiHaptic,
+              ),
+              Positioned(
+                left: 16,
+                right: 16,
+                top: quoteTop + 54,
+                child: ChromeFade(
+                  hidden: pureDisplay || timer.phase == TimerPhase.running,
+                  slideOffset: const Offset(0, -0.04),
+                  child: Center(
+                    child: SegmentedButton<TimerMode>(
+                      showSelectedIcon: false,
+                      style: ButtonStyle(
+                        visualDensity: VisualDensity.compact,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      segments: const [
+                        ButtonSegment(
+                          value: TimerMode.focus,
+                          label: Text('番茄钟', style: TextStyle(fontSize: 12)),
+                        ),
+                        ButtonSegment(
+                          value: TimerMode.countUp,
+                          label: Text('正计时', style: TextStyle(fontSize: 12)),
+                        ),
+                      ],
+                      selected: {isCountUpMode ? TimerMode.countUp : TimerMode.focus},
+                      onSelectionChanged: (values) => _toggleMode(values.single),
                     ),
                   ),
                 ),
-              ],
+              ),
+              Positioned(
+                left: 16,
+                right: 16,
+                bottom: controlsBottom,
+                child: GestureDetector(
+                  onVerticalDragEnd: (details) {
+                    if (details.primaryVelocity != null &&
+                        details.primaryVelocity! < -200) {
+                      widget.onSwipeStats();
+                    }
+                  },
+                  child: ChromeFade(
+                  hidden: pureDisplay,
+                  slideOffset: const Offset(0, 0.18),
+                  scale: 0.96,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      const _CompactAmbientInfo(),
+                      const Spacer(),
+                      TimerActions(
+                        controller: widget.controller,
+                        mode: timer.mode,
+                        phase: timer.phase,
+                        keepScreenOn: settings.keepScreenOnEnabled,
+                        hapticsEnabled: settings.completionHapticsEnabled,
+                        onOpenSettings: widget.onOpenSettings,
+                        onOpenStats: widget.onOpenStats,
+                        onToggleKeepScreenOn: widget.onToggleKeepScreenOn,
+                        onUiHaptic: widget.onUiHaptic,
+                      ),
+                    ],
+                  ),
+                ),
+                ),
+              ),
             ],
           ),
         );
       },
     );
   }
-
-  void _showModeSheet(BuildContext context) {
-    showModalBottomSheet<void>(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (sheetContext) {
-        final ctrl = controller;
-        final currentMode = ctrl.data.timer.mode;
-        final isPomodoro = currentMode == TimerMode.focus ||
-            currentMode == TimerMode.shortBreak ||
-            currentMode == TimerMode.longBreak;
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 36,
-                  height: 5,
-                  decoration: BoxDecoration(
-                    color: Theme.of(sheetContext).colorScheme.outlineVariant,
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Text('选择计时模式',
-                  style: Theme.of(sheetContext).textTheme.titleMedium
-                      ?.copyWith(fontWeight: FontWeight.w600)),
-                const SizedBox(height: 16),
-                ListTile(
-                  leading: Icon(modeIcon(TimerMode.focus),
-                    color: isPomodoro
-                        ? modePalette(TimerMode.focus).accent
-                        : null),
-                  title: const Text('番茄钟'),
-                  subtitle: const Text('倒计时专注，自动切换休息'),
-                  selected: isPomodoro,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  onTap: () {
-                    ctrl.selectMode(TimerMode.focus);
-                    Navigator.pop(sheetContext);
-                  },
-                ),
-                const SizedBox(height: 8),
-                ListTile(
-                  leading: Icon(modeIcon(TimerMode.countUp),
-                    color: currentMode == TimerMode.countUp
-                        ? modePalette(TimerMode.countUp).accent
-                        : null),
-                  title: const Text('正计时'),
-                  subtitle: const Text('不设上限，想专注多久就多久'),
-                  selected: currentMode == TimerMode.countUp,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  onTap: () {
-                    ctrl.selectMode(TimerMode.countUp);
-                    Navigator.pop(sheetContext);
-                  },
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
 }
 
-class _AmbientInfoLine extends StatefulWidget {
-  const _AmbientInfoLine();
+class _AmbientInfoRow extends StatefulWidget {
+  const _AmbientInfoRow();
 
   @override
-  State<_AmbientInfoLine> createState() => _AmbientInfoLineState();
+  State<_AmbientInfoRow> createState() => _AmbientInfoRowState();
 }
 
-class _AmbientInfoLineState extends State<_AmbientInfoLine> {
+class _AmbientInfoRowState extends State<_AmbientInfoRow> {
   static const _weatherService = WeatherService();
 
   WeatherSnapshot? _weather;
@@ -290,11 +286,9 @@ class _AmbientInfoLineState extends State<_AmbientInfoLine> {
 
   Future<void> _loadWeather() async {
     final settings = AppScope.read(context).data.settings;
-    final apiKey = settings.weatherApiKey;
-    if (apiKey.trim().isEmpty) return;
     final weather = await _weatherService.fetch(
       locationId: settings.weatherLocationId,
-      apiKey: apiKey,
+      apiKey: settings.weatherApiKey,
     );
     if (!mounted || weather == null) return;
     setState(() => _weather = weather);
@@ -309,72 +303,105 @@ class _AmbientInfoLineState extends State<_AmbientInfoLine> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final labelStyle = theme.textTheme.titleSmall?.copyWith(
-      color: scheme.onSurfaceVariant.withAlpha(210),
-      fontWeight: FontWeight.w600,
-      letterSpacing: 0,
-    );
+    final scheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final timeStr = _formatTime(_now);
+    final weatherStr = _weather == null
+        ? '--'
+        : '${_weather!.place} ${_weather!.temperatureC}°';
+
     return Row(
       children: [
-        _AmbientChip(
-          icon: Icons.schedule,
-          label: _formatTime(_now),
-          iconSize: 18,
-          style: labelStyle,
+        Icon(Icons.schedule, size: 16, color: scheme.onSurfaceVariant),
+        const SizedBox(width: 6),
+        Text(
+          timeStr,
+          style: textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0,
+            color: scheme.onSurface,
+          ),
         ),
         const Spacer(),
-        if (AppScope.read(context).data.settings.weatherEnabled)
-          Flexible(
-            child: Align(
-              alignment: Alignment.centerRight,
-              child: _AmbientChip(
-                icon: _weatherIcon(_weather?.condition),
-                label: _weather == null
-                    ? '--'
-                    : '${_weather!.place} ${_weather!.temperatureC}°',
-                iconSize: 18,
-                style: labelStyle,
-              ),
+        if (AppScope.read(context).data.settings.weatherEnabled) ...[
+          Icon(_weatherIcon(_weather?.condition), size: 16, color: scheme.onSurfaceVariant),
+          const SizedBox(width: 4),
+          Text(
+            weatherStr,
+            style: textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.w500,
+              letterSpacing: 0,
+              fontSize: 16,
+              color: scheme.onSurface,
             ),
           ),
+        ],
       ],
     );
   }
 }
 
-class _AmbientChip extends StatelessWidget {
-  const _AmbientChip({
-    required this.icon,
-    required this.label,
-    required this.style,
-    this.iconSize = 15,
-  });
-
-  final IconData icon;
-  final String label;
-  final TextStyle? style;
-  final double iconSize;
+class _CompactAmbientInfo extends StatelessWidget {
+  const _CompactAmbientInfo();
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-      child: Row(
+    final textTheme = Theme.of(context).textTheme;
+    final state = context.findAncestorStateOfType<_AmbientInfoRowState>();
+    if (state == null) return const SizedBox.shrink();
+    final now = state._now;
+    final weather = state._weather;
+    final settings = AppScope.read(context).data.settings;
+    final timeStr = _formatTime(now);
+    final weatherStr = weather == null
+        ? '--'
+        : '${weather.place} ${weather.temperatureC}°';
+
+    return SizedBox(
+      width: 100,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: iconSize, color: scheme.onSurfaceVariant),
-          const SizedBox(width: 6),
-          Flexible(
-            child: Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: style,
-            ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.schedule, size: 14, color: scheme.onSurfaceVariant),
+              const SizedBox(width: 4),
+              Text(
+                timeStr,
+                style: textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0,
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+            ],
           ),
+          if (settings.weatherEnabled) ...[
+            const SizedBox(height: 2),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(_weatherIcon(weather?.condition), size: 14,
+                  color: scheme.onSurfaceVariant),
+                const SizedBox(width: 4),
+                Flexible(
+                  child: Text(
+                    weatherStr,
+                    overflow: TextOverflow.ellipsis,
+                    style: textTheme.titleMedium?.copyWith(
+                      letterSpacing: 0,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );
@@ -408,15 +435,13 @@ class _TimerFace extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (!oledMode) {
-      return child;
-    }
+    if (!oledMode) return child;
     final theme = Theme.of(context);
     return Theme(
       data: theme.copyWith(
         colorScheme: theme.colorScheme.copyWith(
-          onSurface: Colors.white,
-          onSurfaceVariant: Colors.white70,
+          onSurface: const Color(0xFFAAAAAA),
+          onSurfaceVariant: const Color(0xFF666666),
         ),
       ),
       child: child,
@@ -491,22 +516,14 @@ class _HitokotoLineState extends State<_HitokotoLine> {
   }
 
   void _loadQuote() {
-    if (_cachedQuote != null) {
-      return;
-    }
+    if (_cachedQuote != null) return;
     final pending = _pendingQuote ??= _service.fetch();
     unawaited(
       pending.then((quote) {
-        if (quote == null) {
-          return;
-        }
+        if (quote == null) return;
         _cachedQuote = quote;
-        if (!mounted) {
-          return;
-        }
-        setState(() {
-          _quote = quote;
-        });
+        if (!mounted) return;
+        setState(() => _quote = quote);
       }),
     );
   }
@@ -568,9 +585,7 @@ class _PipReturnScale extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (!active) {
-      return child;
-    }
+    if (!active) return child;
     return TweenAnimationBuilder<double>(
       tween: Tween<double>(begin: 0.62, end: 1),
       duration: const Duration(milliseconds: 280),

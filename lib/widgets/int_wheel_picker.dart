@@ -31,6 +31,7 @@ class _IntWheelPickerState extends State<IntWheelPicker> {
   late final FixedExtentScrollController _controller;
   late final List<int> _options;
   int _lastNotified = 0;
+  int _liveValue = 0;
 
   @override
   void initState() {
@@ -42,6 +43,7 @@ class _IntWheelPickerState extends State<IntWheelPicker> {
         .indexWhere((v) => v >= widget.value)
         .clamp(0, _options.length - 1);
     _lastNotified = widget.value;
+    _liveValue = widget.value;
     _controller = FixedExtentScrollController(initialItem: initialIndex);
   }
 
@@ -49,6 +51,7 @@ class _IntWheelPickerState extends State<IntWheelPicker> {
   void didUpdateWidget(IntWheelPicker oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.value != widget.value) {
+      _liveValue = widget.value;
       final idx = _options
           .indexWhere((v) => v >= widget.value)
           .clamp(0, _options.length - 1);
@@ -93,7 +96,7 @@ class _IntWheelPickerState extends State<IntWheelPicker> {
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
-                    widget.value.toString(),
+                    _liveValue.toString(),
                     style: textTheme.bodyMedium?.copyWith(
                       color: scheme.onPrimaryContainer,
                       fontWeight: FontWeight.w600,
@@ -172,6 +175,9 @@ class _IntWheelPickerState extends State<IntWheelPicker> {
 
   void _onChanged(int index) {
     final next = _options[index];
+    if (next != _liveValue) {
+      setState(() => _liveValue = next);
+    }
     if (next == _lastNotified) return;
     _lastNotified = next;
     HapticFeedback.selectionClick();

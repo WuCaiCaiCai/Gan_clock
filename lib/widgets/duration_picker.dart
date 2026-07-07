@@ -26,6 +26,8 @@ class DurationPicker extends StatefulWidget {
 class _DurationPickerState extends State<DurationPicker> {
   late final FixedExtentScrollController _hourController;
   late final FixedExtentScrollController _minuteController;
+  int _liveHours = 0;
+  int _liveMinutes = 0;
 
   int get maxHours => widget.maxMinutes ~/ 60;
 
@@ -36,6 +38,8 @@ class _DurationPickerState extends State<DurationPicker> {
   @override
   void initState() {
     super.initState();
+    _liveHours = currentHours;
+    _liveMinutes = currentMinutes;
     _hourController = FixedExtentScrollController(initialItem: currentHours);
     _minuteController = FixedExtentScrollController(
       initialItem: _minuteIndex(currentMinutes),
@@ -46,6 +50,8 @@ class _DurationPickerState extends State<DurationPicker> {
   void didUpdateWidget(DurationPicker oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.valueMinutes != widget.valueMinutes) {
+      _liveHours = currentHours;
+      _liveMinutes = currentMinutes;
       final h = currentHours;
       final m = _minuteIndex(currentMinutes);
       if (_hourController.selectedItem != h) {
@@ -68,7 +74,14 @@ class _DurationPickerState extends State<DurationPicker> {
   void _notifyChange() {
     final hours = _hourController.selectedItem;
     final minuteIndex = _minuteController.selectedItem;
-    final total = (hours * 60 + _minuteValue(minuteIndex))
+    final minutes = _minuteValue(minuteIndex);
+    if (hours != _liveHours || minutes != _liveMinutes) {
+      setState(() {
+        _liveHours = hours;
+        _liveMinutes = minutes;
+      });
+    }
+    final total = (hours * 60 + minutes)
         .clamp(widget.minMinutes, widget.maxMinutes);
     if (total != widget.valueMinutes) {
       HapticFeedback.selectionClick();
@@ -89,8 +102,8 @@ class _DurationPickerState extends State<DurationPicker> {
     final textTheme = Theme.of(context).textTheme;
     const itemExtent = 44.0;
 
-    final displayHours = currentHours;
-    final displayMinutes = currentMinutes;
+    final displayHours = _liveHours;
+    final displayMinutes = _liveMinutes;
 
     return Card(
       child: Padding(
