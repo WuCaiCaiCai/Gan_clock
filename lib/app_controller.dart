@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 
 import 'completion_feedback.dart';
 import 'models.dart';
@@ -212,6 +213,7 @@ class AppController extends ChangeNotifier {
     }
     _data = result.data;
     _setCompletionMessage(result.completedMode);
+    HapticFeedback.lightImpact();
     _restartTicker();
     _notify();
     unawaited(_saveCurrentSilently());

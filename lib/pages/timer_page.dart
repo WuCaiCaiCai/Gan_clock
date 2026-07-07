@@ -5,14 +5,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../app_controller.dart';
-import '../app_scope.dart';
 import '../hitokoto_service.dart';
 import '../models.dart';
 import '../utils.dart';
-import '../weather_service.dart';
 import '../widgets/action_buttons.dart';
 import '../widgets/chrome_fade.dart';
 import '../widgets/timer_ring.dart';
+
+String _fmtTime(DateTime v) {
+  final l = v.toLocal();
+  return '${l.hour.toString().padLeft(2, '0')}:${l.minute.toString().padLeft(2, '0')}';
+}
 
 class TimerPage extends StatefulWidget {
   const TimerPage({
@@ -28,6 +31,8 @@ class TimerPage extends StatefulWidget {
     required this.onToggleKeepScreenOn,
     required this.onUiHaptic,
     required this.onSwipeStats,
+    required this.pictureInPictureEnabled,
+    required this.onTogglePictureInPicture,
     super.key,
   });
 
@@ -43,6 +48,8 @@ class TimerPage extends StatefulWidget {
   final VoidCallback onToggleKeepScreenOn;
   final Future<void> Function() onUiHaptic;
   final VoidCallback onSwipeStats;
+  final bool pictureInPictureEnabled;
+  final ValueChanged<bool> onTogglePictureInPicture;
 
   @override
   State<TimerPage> createState() => _TimerPageState();
@@ -53,6 +60,8 @@ class _TimerPageState extends State<TimerPage>
   late final AnimationController _pressController;
   late final Animation<double> _pressScale;
   bool _canSwitch = false;
+  DateTime _now = DateTime.now();
+  Timer? _clockTimer;
 
   @override
   void initState() {
@@ -65,6 +74,9 @@ class _TimerPageState extends State<TimerPage>
       TweenSequenceItem(tween: Tween(begin: 1.0, end: 0.88), weight: 1),
     ]).animate(CurvedAnimation(parent: _pressController, curve: Curves.easeInCubic));
     _pressController.addStatusListener(_onPressStatus);
+    _clockTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) setState(() => _now = DateTime.now());
+    });
   }
 
   void _onPressStatus(AnimationStatus status) {
@@ -84,6 +96,7 @@ class _TimerPageState extends State<TimerPage>
 
   @override
   void dispose() {
+    _clockTimer?.cancel();
     _pressController.removeStatusListener(_onPressStatus);
     _pressController.dispose();
     super.dispose();
@@ -102,7 +115,7 @@ class _TimerPageState extends State<TimerPage>
     return LayoutBuilder(
       builder: (context, constraints) {
         final controlsBottom = 14.0 + MediaQuery.paddingOf(context).bottom;
-        final quoteTop = (constraints.maxHeight * 0.30).clamp(70.0, 120.0);
+        final quoteTop = (constraints.maxHeight * 0.25).clamp(60.0, 110.0);
         final bottomReserve = controlsBottom + 150;
         final maxRingDimension = math.min(
           344.0,
@@ -146,6 +159,7 @@ class _TimerPageState extends State<TimerPage>
                         maxDimension: maxRingDimension,
                         showInnerStatus: false,
                         oledMode: widget.oledMode,
+                        idleText: _fmtTime(_now),
                       ),
                     );
                   },
@@ -186,12 +200,7 @@ class _TimerPageState extends State<TimerPage>
                     hidden: pureDisplay,
                     slideOffset: const Offset(0, 0.18),
                     scale: 0.96,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const _CompactAmbientInfo(),
-                        const SizedBox(height: 10),
-                        TimerActions(
+                    child: TimerActions(
                           controller: widget.controller,
                           mode: timer.mode,
                           phase: timer.phase,
@@ -201,8 +210,8 @@ class _TimerPageState extends State<TimerPage>
                           onOpenStats: widget.onOpenStats,
                           onToggleKeepScreenOn: widget.onToggleKeepScreenOn,
                           onUiHaptic: widget.onUiHaptic,
-                        ),
-                      ],
+                          pictureInPictureEnabled: widget.pictureInPictureEnabled,
+                          onTogglePictureInPicture: widget.onTogglePictureInPicture,
                     ),
                   ),
                 ),
@@ -211,99 +220,6 @@ class _TimerPageState extends State<TimerPage>
           ),
         );
       },
-    );
-  }
-}
-
-class _CompactAmbientInfo extends StatefulWidget {
-  const _CompactAmbientInfo();
-
-  @override
-  State<_CompactAmbientInfo> createState() => _CompactAmbientInfoState();
-}
-
-class _CompactAmbientInfoState extends State<_CompactAmbientInfo> {
-  static const _weatherService = WeatherService();
-
-  WeatherSnapshot? _weather;
-  late DateTime _now;
-  Timer? _clockTimer;
-  Timer? _weatherTimer;
-
-  @override
-  void initState() {
-    super.initState();
-    _now = DateTime.now();
-    _clockTimer = Timer.periodic(const Duration(minutes: 1), (_) {
-      if (!mounted) return;
-      setState(() => _now = DateTime.now());
-    });
-    _weatherTimer = Timer.periodic(const Duration(minutes: 30), (_) {
-      if (!mounted) return;
-      unawaited(_loadWeather());
-    });
-    unawaited(_loadWeather());
-  }
-
-  Future<void> _loadWeather() async {
-    final settings = AppScope.read(context).data.settings;
-    final weather = await _weatherService.fetch(
-      locationId: settings.weatherLocationId,
-      apiKey: settings.weatherApiKey,
-    );
-    if (!mounted || weather == null) return;
-    setState(() => _weather = weather);
-  }
-
-  @override
-  void dispose() {
-    _clockTimer?.cancel();
-    _weatherTimer?.cancel();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
-    final settings = AppScope.read(context).data.settings;
-    final timeStr = '${_now.hour.toString().padLeft(2, '0')}:'
-        '${_now.minute.toString().padLeft(2, '0')}';
-
-    final ws = _weather;
-    final weatherStr = ws == null ? '--' : '${ws.place} ${ws.temperatureC}°';
-    final wIcon = switch (ws?.condition) {
-      '晴' => Icons.wb_sunny_outlined,
-      '少云' => Icons.filter_drama_outlined,
-      '多云' => Icons.cloud_outlined,
-      '雾' => Icons.foggy,
-      '雪' || '阵雪' => Icons.ac_unit,
-      '雷雨' => Icons.thunderstorm_outlined,
-      '雨' || '阵雨' || '毛毛雨' => Icons.water_drop_outlined,
-      _ => Icons.wb_cloudy_outlined,
-    };
-
-    return Center(
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.schedule, size: 13, color: scheme.onSurfaceVariant.withAlpha(160)),
-          const SizedBox(width: 4),
-          Text(timeStr,
-            style: textTheme.labelMedium?.copyWith(
-              color: scheme.onSurfaceVariant,
-              fontWeight: FontWeight.w500)),
-          if (settings.weatherEnabled) ...[
-            const SizedBox(width: 12),
-            Icon(wIcon, size: 13, color: scheme.onSurfaceVariant.withAlpha(160)),
-            const SizedBox(width: 4),
-            Text(weatherStr,
-              style: textTheme.labelMedium?.copyWith(
-                color: scheme.onSurfaceVariant,
-                fontWeight: FontWeight.w500)),
-          ],
-        ],
-      ),
     );
   }
 }

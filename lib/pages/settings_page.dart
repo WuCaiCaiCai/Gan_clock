@@ -7,7 +7,6 @@ import '../app_controller.dart';
 import '../app_scope.dart';
 import '../models.dart';
 import '../platform_controls.dart';
-import '../weather_service.dart';
 import '../widgets/duration_picker.dart';
 import '../widgets/int_wheel_picker.dart';
 
@@ -30,7 +29,7 @@ class SettingsPage extends StatefulWidget {
 class _SettingsPageState extends State<SettingsPage> {
   int _subPage = 0;
 
-  static const _pages = ['', '计时与待机', '备份', '天气'];
+  static const _pages = ['', '计时与待机', '备份'];
 
   @override
   void dispose() {
@@ -166,34 +165,6 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
               ],
             ),
-            const SizedBox(height: 14),
-            _SettingsSection(
-              icon: Icons.folder_copy_outlined,
-              title: '数据',
-              children: [
-                ListTile(
-                  leading: const Icon(Icons.folder_copy_outlined),
-                  title: const Text('备份'),
-                  subtitle: const Text('本地备份与恢复'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => _openSubPage(2),
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            _SettingsSection(
-              icon: Icons.cloud_outlined,
-              title: '天气',
-              children: [
-                ListTile(
-                  leading: const Icon(Icons.wb_sunny_outlined),
-                  title: const Text('天气显示'),
-                  subtitle: Text(settings.weatherEnabled ? '已开启' : '已关闭'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => _openSubPage(3),
-                ),
-              ],
-            ),
           ],
         ),
       ),
@@ -241,8 +212,6 @@ class _SettingsPageState extends State<SettingsPage> {
         return const _TimerSettingsContent();
       case 2:
         return const _BackupContent();
-      case 3:
-        return const _WeatherSettingsContent();
       default:
         return const SizedBox.shrink();
     }
@@ -876,233 +845,6 @@ class _NumberStepperState extends State<NumberStepper> {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _WeatherSettingsContent extends StatefulWidget {
-  const _WeatherSettingsContent();
-
-  @override
-  State<_WeatherSettingsContent> createState() => _WeatherSettingsContentState();
-}
-
-class _WeatherSettingsContentState extends State<_WeatherSettingsContent> {
-  static const _weatherService = WeatherService();
-
-  late final TextEditingController _cityController;
-  late final TextEditingController _apiKeyController;
-  Timer? _debounce;
-  List<CityResult> _suggestions = [];
-  bool _loading = false;
-
-  @override
-  void initState() {
-    super.initState();
-    final settings = AppScope.read(context).data.settings;
-    _cityController = TextEditingController(text: settings.weatherCity);
-    _apiKeyController = TextEditingController(text: settings.weatherApiKey);
-    _cityController.addListener(_onTextChanged);
-  }
-
-  @override
-  void dispose() {
-    _debounce?.cancel();
-    _cityController
-      ..removeListener(_onTextChanged)
-      ..dispose();
-    _apiKeyController.dispose();
-    super.dispose();
-  }
-
-  void _onTextChanged() {
-    final text = _cityController.text.trim();
-    _debounce?.cancel();
-    if (text.length < 2) {
-      setState(() => _suggestions = []);
-      return;
-    }
-    _debounce = Timer(const Duration(milliseconds: 300), () async {
-      setState(() => _loading = true);
-      final settings = AppScope.read(context).data.settings;
-      final results = await _weatherService.search(text, apiKey: settings.weatherApiKey);
-      if (!mounted) return;
-      setState(() {
-        _suggestions = results;
-        _loading = false;
-      });
-    });
-  }
-
-  void _selectCity(CityResult city) {
-    _cityController.text = city.fullName;
-    setState(() => _suggestions = []);
-    final controller = AppScope.read(context);
-    controller.updateSettings(
-      controller.data.settings.copyWith(
-        weatherCity: city.fullName,
-        weatherLocationId: city.id,
-      ),
-    );
-  }
-
-  void _clearCity() {
-    _cityController.clear();
-    setState(() => _suggestions = []);
-    final controller = AppScope.read(context);
-    controller.updateSettings(
-      controller.data.settings.copyWith(
-        weatherCity: '',
-        weatherLocationId: '',
-      ),
-    );
-  }
-
-  void _saveApiKey() {
-    final key = _apiKeyController.text.trim();
-    AppScope.read(context).updateSettings(
-      AppScope.read(context).data.settings.copyWith(weatherApiKey: key),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final controller = AppScope.read(context);
-    final settings = controller.data.settings;
-
-    return _SettingsSubPageScaffold(
-      children: [
-        Card(
-          child: Column(
-            children: [
-              SwitchListTile(
-                contentPadding: const EdgeInsets.fromLTRB(16, 4, 12, 4),
-                secondary: const Icon(Icons.wb_sunny_outlined),
-                title: const Text('显示天气'),
-                subtitle: const Text('在计时页顶部显示当前温度'),
-                value: settings.weatherEnabled,
-                onChanged: (value) {
-                  controller.updateSettings(
-                    settings.copyWith(weatherEnabled: value),
-                  );
-                },
-              ),
-            ],
-          ),
-        ),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('和风天气 API Key（可选）',
-                  style: Theme.of(context).textTheme.titleSmall
-                      ?.copyWith(fontWeight: FontWeight.w600)),
-                const SizedBox(height: 4),
-                Text('填入 Key 使用和风天气，留空自动使用 Open-Meteo',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  )),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: _apiKeyController,
-                  decoration: const InputDecoration(
-                    hintText: '输入 API Key',
-                    border: OutlineInputBorder(),
-                  ),
-                  obscureText: true,
-                  textInputAction: TextInputAction.done,
-                  onSubmitted: (_) => _saveApiKey(),
-                ),
-              ],
-            ),
-          ),
-        ),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('固定城市',
-                  style: Theme.of(context).textTheme.titleSmall
-                      ?.copyWith(fontWeight: FontWeight.w600)),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: _cityController,
-                  decoration: InputDecoration(
-                    hintText: '输入城市名搜索',
-                    prefixIcon: const Icon(Icons.search),
-                    suffixIcon: _cityController.text.isNotEmpty
-                        ? IconButton(
-                            icon: const Icon(Icons.clear, size: 18),
-                            onPressed: _clearCity,
-                          )
-                        : _loading
-                            ? const Padding(
-                                padding: EdgeInsets.all(14),
-                                child: SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                ),
-                              )
-                            : null,
-                    border: const OutlineInputBorder(),
-                  ),
-                  textInputAction: TextInputAction.done,
-                ),
-                if (_suggestions.isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  ..._suggestions.map((city) => ListTile(
-                    dense: true,
-                    leading: const Icon(Icons.location_on_outlined, size: 18),
-                    title: Text(city.fullName, style: const TextStyle(fontSize: 14)),
-                    onTap: () => _selectCity(city),
-                  )),
-                ],
-              ],
-            ),
-          ),
-        ),
-        Card(
-          child: Column(
-            children: [
-              ListTile(
-                contentPadding: const EdgeInsets.fromLTRB(16, 4, 12, 4),
-                leading: const Icon(Icons.location_on_outlined),
-                title: const Text('定位权限'),
-                subtitle: const Text('未设置固定城市时，自动通过 IP 获取位置'),
-                trailing: FilledButton.tonalIcon(
-                  onPressed: () async {
-                    final granted =
-                        await PlatformControls.requestLocationPermission();
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context)
-                        ..hideCurrentSnackBar()
-                        ..showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              granted ? '定位权限已获取' : '定位权限被拒绝',
-                            ),
-                          ),
-                        );
-                      if (!granted) {
-                        await PlatformControls.openLocationSettings();
-                      }
-                    }
-                  },
-                  icon: const Icon(Icons.gps_fixed, size: 18),
-                  label: const Text('请求权限'),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
     );
   }
 }

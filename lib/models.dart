@@ -98,10 +98,6 @@ class AppSettings {
     this.localBackupAutoEnabled = false,
     this.localBackupAutoIntervalMinutes = 60,
     this.localBackupKeepCount = 5,
-    this.weatherEnabled = true,
-    this.weatherCity = '',
-    this.weatherLocationId = '',
-    this.weatherApiKey = '',
   });
 
   final int focusMinutes;
@@ -118,10 +114,6 @@ class AppSettings {
   final bool localBackupAutoEnabled;
   final int localBackupAutoIntervalMinutes;
   final int localBackupKeepCount;
-  final bool weatherEnabled;
-  final String weatherCity;
-  final String weatherLocationId;
-  final String weatherApiKey;
 
   AppSettings copyWith({
     int? focusMinutes,
@@ -138,10 +130,6 @@ class AppSettings {
     bool? localBackupAutoEnabled,
     int? localBackupAutoIntervalMinutes,
     int? localBackupKeepCount,
-    bool? weatherEnabled,
-    String? weatherCity,
-    String? weatherLocationId,
-    String? weatherApiKey,
   }) {
     return AppSettings(
       focusMinutes: focusMinutes ?? this.focusMinutes,
@@ -163,10 +151,6 @@ class AppSettings {
       localBackupAutoIntervalMinutes:
           localBackupAutoIntervalMinutes ?? this.localBackupAutoIntervalMinutes,
       localBackupKeepCount: localBackupKeepCount ?? this.localBackupKeepCount,
-      weatherEnabled: weatherEnabled ?? this.weatherEnabled,
-      weatherCity: weatherCity ?? this.weatherCity,
-      weatherLocationId: weatherLocationId ?? this.weatherLocationId,
-      weatherApiKey: weatherApiKey ?? this.weatherApiKey,
     );
   }
 
@@ -186,10 +170,6 @@ class AppSettings {
       'localBackupAutoEnabled': localBackupAutoEnabled,
       'localBackupAutoIntervalMinutes': localBackupAutoIntervalMinutes,
       'localBackupKeepCount': localBackupKeepCount,
-      'weatherEnabled': weatherEnabled,
-      'weatherCity': weatherCity,
-      'weatherLocationId': weatherLocationId,
-      'weatherApiKey': weatherApiKey,
     };
   }
 
@@ -232,10 +212,6 @@ class AppSettings {
         50,
         5,
       ),
-      weatherEnabled: value['weatherEnabled'] as bool? ?? true,
-      weatherCity: value['weatherCity'] as String? ?? '',
-      weatherLocationId: value['weatherLocationId'] as String? ?? '',
-      weatherApiKey: value['weatherApiKey'] as String? ?? '',
     );
   }
 }

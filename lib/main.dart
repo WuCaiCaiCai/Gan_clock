@@ -209,7 +209,6 @@ class _TomatoHomePageState extends State<TomatoHomePage>
   bool _ignoreNextQuietTap = false;
   bool _notificationPermissionChecked = false;
   bool _notificationPromptVisible = false;
-  bool _locationPermissionChecked = false;
   bool? _lastKeepScreenOnSent;
   bool? _lastPipEnabledSent;
   String? _lastPipTitleSent;
@@ -244,7 +243,6 @@ class _TomatoHomePageState extends State<TomatoHomePage>
     _syncIdleChrome();
     _syncPlatformControls();
     _requestNotificationPermissionIfNeeded();
-    _requestLocationPermissionIfNeeded();
   }
 
   @override
@@ -391,14 +389,6 @@ class _TomatoHomePageState extends State<TomatoHomePage>
     if (shouldOpenSettings == true) {
       await PlatformControls.openNotificationSettings();
     }
-  }
-
-  Future<void> _requestLocationPermissionIfNeeded() async {
-    if (_locationPermissionChecked) {
-      return;
-    }
-    _locationPermissionChecked = true;
-    await PlatformControls.requestLocationPermission();
   }
 
   @override
@@ -594,6 +584,8 @@ class _TomatoHomePageState extends State<TomatoHomePage>
           onToggleKeepScreenOn: _toggleKeepScreenOn,
           onUiHaptic: _emitUiHaptic,
           onSwipeStats: _openStatsSheet,
+          pictureInPictureEnabled: data.settings.pictureInPictureEnabled,
+          onTogglePictureInPicture: _togglePictureInPicture,
         );
       case 2:
         return SettingsPage(
@@ -615,6 +607,8 @@ class _TomatoHomePageState extends State<TomatoHomePage>
           onToggleKeepScreenOn: _toggleKeepScreenOn,
           onUiHaptic: _emitUiHaptic,
           onSwipeStats: _openStatsSheet,
+          pictureInPictureEnabled: data.settings.pictureInPictureEnabled,
+          onTogglePictureInPicture: _togglePictureInPicture,
         );
     }
   }
@@ -691,6 +685,27 @@ class _TomatoHomePageState extends State<TomatoHomePage>
         settings.copyWith(keepScreenOnEnabled: !settings.keepScreenOnEnabled),
       ),
     );
+  }
+
+  void _togglePictureInPicture(bool enabled) {
+    final controller = _controller;
+    if (controller == null) return;
+    final settings = controller.data.settings;
+    if (settings.pictureInPictureEnabled == enabled) return;
+    unawaited(
+      controller.updateSettings(settings.copyWith(pictureInPictureEnabled: enabled)),
+    );
+    if (!enabled) {
+      _pipTransitioning = false;
+      _inPictureInPicture = false;
+      unawaited(
+        PlatformControls.setPipState(
+          enabled: false, title: '', subtitle: '',
+          keepScreenOn: settings.keepScreenOnEnabled,
+          totalSeconds: 1, remainingSeconds: 1,
+        ),
+      );
+    }
   }
 
   void _handleStatsSubPageChanged(bool open) {

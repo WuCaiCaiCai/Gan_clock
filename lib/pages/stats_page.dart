@@ -67,9 +67,13 @@ class _StatsPageState extends State<StatsPage> {
               )
             : KeyedSubtree(
                 key: const ValueKey('stats-main'),
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(24, 6, 20, 100),
-                  child: Column(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    return SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(24, 6, 20, 100),
+                      child: SizedBox(
+                        width: constraints.maxWidth,
+                        child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       _TodayStats(data: widget.data),
@@ -94,8 +98,11 @@ class _StatsPageState extends State<StatsPage> {
                     ],
                   ),
                 ),
-              ),
+              );
+            },
+          ),
       ),
+    ),
     );
   }
 }

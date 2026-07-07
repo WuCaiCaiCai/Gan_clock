@@ -5,6 +5,11 @@ import 'package:flutter/material.dart';
 import '../models.dart';
 import '../utils.dart';
 
+Color _oledAccent(Color accent) {
+  final hsl = HSLColor.fromColor(accent);
+  return hsl.withSaturation(0.25).withLightness(0.28).toColor();
+}
+
 class TimerProgressRing extends StatefulWidget {
   const TimerProgressRing({
     required this.snapshot,
@@ -12,6 +17,7 @@ class TimerProgressRing extends StatefulWidget {
     this.compact = false,
     this.showInnerStatus = true,
     this.oledMode = false,
+    this.idleText,
     this.surfaceKey,
     super.key,
   });
@@ -21,6 +27,7 @@ class TimerProgressRing extends StatefulWidget {
   final bool compact;
   final bool showInnerStatus;
   final bool oledMode;
+  final String? idleText;
   final Key? surfaceKey;
 
   @override
@@ -156,9 +163,9 @@ class _TimerProgressRingState extends State<TimerProgressRing>
                           return CustomPaint(
                             painter: _RingPainter(
                               progress: value,
-                              color: oled ? const Color(0xFF666666) : palette.accent,
+                              color: oled ? _oledAccent(palette.accent) : palette.accent,
                               trackColor: oled
-                                  ? const Color(0xFF181818)
+                                  ? const Color(0xFF141414)
                                   : palette.accent.withAlpha(
                                       scheme.brightness == Brightness.dark ? 76 : 52,
                                     ),
@@ -181,7 +188,7 @@ class _TimerProgressRingState extends State<TimerProgressRing>
                                     child: Icon(
                                      modeIcon(widget.snapshot.mode),
                                      key: ValueKey(widget.snapshot.mode),
-                                     color: oled ? const Color(0xFF888888) : palette.accent,
+                                      color: oled ? _oledAccent(palette.accent) : palette.accent,
                                      size: 30,
                                   ),
                                 ),
@@ -191,9 +198,9 @@ class _TimerProgressRingState extends State<TimerProgressRing>
                                 fit: BoxFit.scaleDown,
                                 child: Text(
                                   widget.snapshot.phase == TimerPhase.idle
-                                      ? widget.snapshot.mode == TimerMode.focus
+                                      ? widget.idleText ?? (widget.snapshot.mode == TimerMode.focus
                                           ? '番茄钟'
-                                          : '正计时'
+                                          : '正计时')
                                       : formatClock(widget.snapshot.remainingSeconds),
                                   textAlign: TextAlign.center,
                                   softWrap: false,
